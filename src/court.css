@@ -267,3 +267,22 @@ body.controller-active :focus { outline: 3px solid var(--lime); outline-offset: 
 .league-outcome { color: var(--lime); }
 .other-fixtures { margin-top: 8px; font-size: .82rem; color: var(--muted); }
 .other-fixtures summary, .past-seasons summary, .rival-records summary { cursor: pointer; }
+
+.hockey .court { background: #dceaf1; aspect-ratio: 2.08; }
+.hockey .lineup { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.hockey .marker { width: 28px; height: 28px; font-size: .7rem; }
+.hockey .ball { background: #141d21; border-color: #e5f4fe; border-radius: 50%; }
+.lineup-detail { padding: 5px 10px 0; color: var(--muted); font-size: .8rem; }
+.display-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.display-options label { display: grid; gap: 3px; color: var(--muted); font-size: .86rem; }
+.display-options select { min-height: 36px; background: #23353d; color: inherit; border: 1px solid var(--line); font: inherit; }
+html[data-text-size="large"] { font-size: 112.5%; }
+html[data-text-size="extra"] { font-size: 125%; }
+html[data-contrast="high"] { --ink: #ffffff; --muted: #e7f3fa; --line: #8ca6b5; --home: #aefbe9; --lime: #e8ff9a; --away: #ffe2a3; }
+html[data-contrast="high"] body { color: #fff; }
+html[data-contrast="high"] .court { outline: 1px solid #91b5c7; }
+@media (max-width: 560px) {
+  .hockey .court { aspect-ratio: .81; }
+  .hockey .marker { width: 23px; height: 23px; }
+  .hockey .lineup { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

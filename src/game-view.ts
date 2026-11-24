@@ -7,7 +7,7 @@ import { TECHNIQUES } from './club.ts'
 import type { LoggedTurn } from './club-fixture.ts'
 
 export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
-  id: 'basketball' | 'soccer'
+  id: 'basketball' | 'soccer' | 'hockey'
   surfaceName: string
   intro: string
   width: number
@@ -27,6 +27,7 @@ export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
   draw(context: CanvasRenderingContext2D): void
   clockDetail(match: S, portrait: boolean): string
   opponentDetail(match: S): string
+  lineupDetail?(match: S): string
 }
 
 function element<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -37,6 +38,7 @@ const scoreboard = element('scoreboard')
 const possession = element('possession')
 const markers = element('markers')
 const lineup = element('lineup')
+const lineupDetail = element('lineup-detail')
 const budget = element('budget')
 const orders = element('orders')
 const actions = element('actions')
@@ -73,7 +75,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   const budgetInput = element<HTMLSelectElement>('budget-mode')
   const nextBudget = () => budgetInput.value === '4' ? 4 : 3
   const portrait = matchMedia('(max-width: 560px)')
-  const isPortrait = () => sport.id === 'soccer' && portrait.matches
+  const isPortrait = () => sport.id !== 'basketball' && portrait.matches
   let match = season?.match ?? sport.create(2026, nextBudget())
   let selected = selectPlayer()
   let plan: C[] = []
@@ -98,8 +100,8 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
       context.setTransform(canvas.width / sport.width, 0, 0, canvas.height / sport.height, 0, 0)
     }
     sport.draw(context)
-    context.strokeStyle = sport.id === 'soccer' ? '#e3fc9b' : '#194f43'
-    context.lineWidth = sport.id === 'soccer' ? 0.5 : 0.28
+    context.strokeStyle = sport.id === 'soccer' ? '#e3fc9b' : sport.id === 'hockey' ? '#204e6a' : '#194f43'
+    context.lineWidth = sport.id === 'basketball' ? 0.28 : 0.5
     context.setLineDash([0.8, 0.55])
     for (const command of plan) {
       const from = findAthlete(match.athletes, command.athlete).position
@@ -131,11 +133,12 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   function renderBoard() {
     const holder = findAthlete(match.athletes, match.holder)
     possession.classList.toggle('away', holder.team === 1)
-    possession.innerHTML = (match.turn > sport.turnLimit) ? 'Match complete' : `Ball <strong>${teams[holder.team]} · ${holder.name}</strong>`
+    const object = sport.id === 'hockey' ? 'puck' : 'ball'
+    possession.innerHTML = (match.turn > sport.turnLimit) ? 'Match complete' : `${sport.id === 'hockey' ? 'Puck' : 'Ball'} <strong>${teams[holder.team]} · ${holder.name}</strong>`
     markers.innerHTML = match.athletes.map(athlete => {
       const ownsBall = athlete.id === holder.id && !(match.turn > sport.turnLimit)
       const queued = plan.some(command => command.athlete === athlete.id)
-      const description = `${teams[athlete.team]} ${athlete.name}, number ${athlete.number}${ownsBall ? ', has the ball' : ''}${queued ? ', command queued' : ''}`
+      const description = `${teams[athlete.team]} ${athlete.name}, number ${athlete.number}${ownsBall ? `, has the ${object}` : ''}${queued ? ', command queued' : ''}`
       const position = project(athlete.position)
       return `<button type="button" class="marker ${athlete.team ? 'away' : 'home'} ${queued ? 'queued' : ''}"
         style="left:${position.x * 100}%;top:${position.y * 100}%"
@@ -146,9 +149,11 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     lineup.innerHTML = match.athletes.filter(athlete => athlete.team === 0).map(athlete =>
       `<button type="button" data-athlete="${athlete.id}" aria-pressed="${selected === athlete.id}"
          aria-label="${athlete.name}, ${athlete.stamina} stamina">
-        <span class="player-line"><span>${sport.id === 'soccer' ? athlete.role : athlete.number}</span><b>${athlete.name}</b></span>
+        <span class="player-line"><span>${sport.id !== 'basketball' ? athlete.role : athlete.number}</span><b>${athlete.name}</b></span>
         <span class="stamina-bar" aria-hidden="true"><i class="${athlete.stamina < 40 ? 'low' : ''}" style="width:${athlete.stamina}%"></i></span>
       </button>`).join('')
+    lineupDetail.textContent = sport.lineupDetail?.(match) ?? ''
+    lineupDetail.hidden = !sport.lineupDetail
     drawBoard()
   }
 
@@ -296,7 +301,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
 
   if (!season) {
     restartButton.addEventListener('click', () => {
-      restart(sport.create((match.seed + 1) >>> 0, nextBudget()), 'New match. The Comets start with the ball.')
+      restart(sport.create((match.seed + 1) >>> 0, nextBudget()), sport.id === 'hockey' ? 'New match. The Comets start with the puck.' : 'New match. The Comets start with the ball.')
     }, { signal })
   }
 
@@ -314,8 +319,9 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   turns.replaceChildren()
   for (const entry of season?.history ?? []) recordTurn(entry.turn, entry.events, entry.score)
   document.body.classList.toggle('soccer', sport.id === 'soccer')
+  document.body.classList.toggle('hockey', sport.id === 'hockey')
   element('court-title').textContent = sport.surfaceName
-  markers.setAttribute('aria-label', sport.id === 'soccer' ? 'Athletes on pitch' : 'Athletes on court')
+  markers.setAttribute('aria-label', sport.id === 'soccer' ? 'Athletes on pitch' : sport.id === 'hockey' ? 'Players on ice' : 'Athletes on court')
   budgetPreset.hidden = Boolean(season) || sport.id !== 'soccer'
   practice.hidden = Boolean(season) || !sport.practices?.length
   portrait.addEventListener('change', render, { signal })

@@ -1,3 +1,4 @@
+import { RINK } from './hockey.ts'
 import { COURT } from './basketball.ts'
 import { PITCH } from './soccer.ts'
 
@@ -66,5 +67,42 @@ export function drawSoccer(context: CanvasRenderingContext2D) {
     context.fillStyle = '#e7f1dc'
     context.fillRect(edge + into * 10.75, mid - 0.32, 0.64, 0.64)
     context.strokeRect(edge, mid - 3.66, into * 1.9, 7.32)
+  }
+}
+
+export function drawHockey(context: CanvasRenderingContext2D) {
+  const { width, height } = RINK
+  const mid = height / 2
+  context.fillStyle = '#dceaf1'
+  context.fillRect(0, 0, width, height)
+  context.strokeStyle = '#4b6c7c'
+  context.lineWidth = 0.38
+  context.beginPath()
+  context.roundRect(0.35, 0.35, width - 0.7, height - 0.7, 4.5)
+  context.stroke()
+  for (const x of [33, 50, 67, 5, 95]) {
+    context.strokeStyle = x === 33 || x === 67 ? '#226ea5' : '#a63840'
+    context.lineWidth = x === 5 || x === 95 ? 0.25 : 0.55
+    context.beginPath()
+    context.moveTo(x, 0.4)
+    context.lineTo(x, height - 0.4)
+    context.stroke()
+  }
+  for (const x of [20, 80]) {
+    for (const y of [12, 36]) circle(x, y, 5, '#b95456')
+  }
+  circle(width / 2, mid, 5, '#226ea5')
+  for (const x of [5, 95]) {
+    context.strokeStyle = '#9a2d38'
+    context.strokeRect(x === 5 ? x - 1.8 : x, mid - 3, 1.8, 6)
+    context.fillStyle = '#93c6df65'
+    context.fillRect(x === 5 ? x : x - 3.6, mid - 3.6, 3.6, 7.2)
+  }
+  function circle(x: number, y: number, radius: number, color: string) {
+    context.strokeStyle = color
+    context.lineWidth = 0.27
+    context.beginPath()
+    context.arc(x, y, radius, 0, Math.PI * 2)
+    context.stroke()
   }
 }
