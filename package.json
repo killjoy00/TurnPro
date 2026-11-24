@@ -1,0 +1,21 @@
+{
+  "name": "turn-pro",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc && npm test",
+    "test": "node --test",
+    "simulate": "node scripts/simulate.mjs",
+    "smoke": "node scripts/browser-smoke.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright": "1.62.1",
+    "typescript": "6.0.3"
+  }
+}
