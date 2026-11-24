@@ -29,11 +29,11 @@ try {
   for (let remaining = 0; remaining < 11; remaining += 1) {
     await page.getByRole('button', { name: 'Commit turn' }).click()
   }
-  assert.match(await page.locator('.turn-clock').innerText(), /Final/)
+  assert.match(await page.locator('.turn-clock').innerText(), /Final/i)
   assert.equal(await page.locator('#commit').isDisabled(), true)
   assert.equal(await page.locator('.turn').count(), 12)
   await page.getByRole('button', { name: 'New match' }).click()
-  assert.match(await page.locator('.turn-clock').innerText(), /Turn 1 \/ 12/)
+  assert.match(await page.locator('.turn-clock').innerText(), /Turn 1 \/ 12/i)
   assert.equal(await page.locator('.turn').count(), 0)
   assert.deepEqual(errors, [])
 
@@ -45,7 +45,7 @@ try {
   await mobile.getByRole('button', { name: 'Drive' }).tap()
   assert.match(await mobile.locator('#budget').innerText(), /1 \/ 3/)
   await mobile.getByRole('button', { name: 'Commit turn' }).tap()
-  assert.match(await mobile.locator('.turn-clock').innerText(), /Turn 2/)
+  assert.match(await mobile.locator('.turn-clock').innerText(), /Turn 2/i)
   console.log('Desktop match, keyboard, restart, mobile touch, and responsive layout passed.')
 } finally {
   await browser.close()

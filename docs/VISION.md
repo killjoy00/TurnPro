@@ -1,6 +1,6 @@
 # Turn Pro
 
-Turn Pro is a turn-based tactical sports RPG. Build a club of fictional athletes, develop distinct specialties, and use them together in recognizable team sports. A match is the tactical encounter: spacing, assignments, stamina, and the opponent's decisions create the problems the team has to solve.
+Turn Pro is a turn-based tactical sports RPG. Build a club of fictional athletes, develop distinct specialties, and use them together in recognizable team sports. Each match is a tactical encounter shaped by spacing, assignments, stamina, and the opponent's decisions.
 
 Steam and Steam Deck are the first commercial targets. The first paid release requires full-sided basketball and soccer. Ice hockey and American football are planned expansions of the same design. Mobile and web are later distribution options. The browser is the first playtest platform.
 
