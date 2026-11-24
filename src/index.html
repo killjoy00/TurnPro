@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Turn Pro</title>
+  <!-- policy -->
   <!-- styles -->
 </head>
 <body>
@@ -14,6 +15,8 @@
         <option value="basketball">Basketball · 5-on-5</option>
         <option value="soccer">Soccer · 11-on-11</option>
       </select>
+      <button id="learn-nav" class="top-action" type="button">How to play</button>
+      <button id="controls-nav" class="top-action" type="button">Controls</button>
       <button id="club-nav" class="club-nav" type="button">Club season</button>
       <button id="restart" class="restart" type="button">New match</button>
     </div>
@@ -50,8 +53,9 @@
             <option value="3">3</option>
             <option value="4">4</option>
           </select>
-          <span id="practice-tools" class="practice-tools"></span>
         </div>
+        <div id="practice-tools" class="practice-tools" hidden></div>
+        <div id="practice-checklist" class="practice-checklist" hidden aria-live="polite"></div>
         <div id="orders" class="orders" aria-label="Queued commands"></div>
         <div id="actions" class="actions"></div>
         <div class="commit-area">
@@ -67,6 +71,25 @@
       <div id="turns"></div>
     </section>
   </main>
+  <dialog id="learn-dialog" aria-labelledby="learn-heading">
+    <h2 id="learn-heading">How to play</h2>
+    <p>Pick an athlete and queue an order. Give different athletes up to three orders, then commit. Both sides reveal their plans at once.</p>
+    <p>Unassigned teammates follow their roles and recover stamina. The play-by-play shows how movement, coverage, and chance shaped the result.</p>
+    <div class="dialog-actions">
+      <button type="button" data-learn="basketball">Practice a basketball combination</button>
+      <button type="button" data-learn="soccer">Practice a soccer through ball</button>
+      <button type="button" data-learn="club">Open the club</button>
+    </div>
+    <form method="dialog"><button>Close</button></form>
+  </dialog>
+  <dialog id="controls-dialog" aria-labelledby="controls-heading">
+    <h2 id="controls-heading">Controls</h2>
+    <p>Use the directional pad or left stick to move focus. Select opens a choice or activates a button.</p>
+    <div id="bindings"></div>
+    <p id="binding-message" role="status"></p>
+    <button type="button" id="reset-bindings">Restore defaults</button>
+    <form method="dialog"><button>Close</button></form>
+  </dialog>
   <!-- game -->
 </body>
 </html>

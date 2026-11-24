@@ -173,10 +173,11 @@ export function shotEstimate(match: Match, athlete: Athlete, screened: ReadonlyS
   const defenders = defendersNear(match, athlete, 7)
   const pressure = defenders.reduce((total, defender) => {
     if (screened.has(defender.id)) return total
-    return total + (distance(defender.position, athlete.position) <= 3.5 ? 17 : 8) + (defender.defense ?? 0)
+    return total + (distance(defender.position, athlete.position) <= 3.5 ? 17 : 8) + (defender.defense ?? 0) + (defender.technique === 'read-play' ? 4 : 0)
   }, 0)
   const fatigue = Math.max(0, 65 - athlete.stamina) * 0.35
-  const chance = clamp(87 - range * 1.55 + (athlete.shooting - 6) * 4 - pressure - fatigue, 7, 94)
+  const cleanLook = athlete.technique === 'clean-look' && pressure === 0 ? 8 : 0
+  const chance = clamp(87 - range * 1.55 + (athlete.shooting - 6) * 4 - pressure - fatigue + cleanLook, 7, 94)
   return { points, chance: Math.round(chance), pressure, range }
 }
 
@@ -337,8 +338,9 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       && distanceToSegment(athlete.position, holder.position, receiver.position) <= 3)
     const range = distance(holder.position, receiver.position)
     const chance = clamp(100 - range * 0.65 + (holder.passing - 6) * 3
-      - lane.reduce((cost, defender) => cost + 17 + (defender.defense ?? 0), 0)
-      + ((holder.awareness ?? 6) - 6) * 1.5 - Math.max(0, 60 - holder.stamina) * 0.3, 15, 98)
+      - lane.reduce((cost, defender) => cost + 17 + (defender.defense ?? 0) + (defender.technique === 'read-play' ? 4 : 0), 0)
+      + ((holder.awareness ?? 6) - 6) * 1.5
+      + (lane.length > 0 && holder.technique === 'thread-pass' ? 12 : 0) - Math.max(0, 60 - holder.stamina) * 0.3, 15, 98)
     const passDetail = `${Math.round(chance)}% completion, ${lane.length} ${lane.length === 1 ? 'defender' : 'defenders'} in the lane`
     if (random.next() * 100 < chance) {
       next.holder = receiver.id
@@ -409,7 +411,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
 
   for (const athlete of next.athletes) {
     const command = commands.get(athlete.id)
-    athlete.stamina = clamp(athlete.stamina + (command ? -ACTIONS[command.kind].stamina : 6), 0, 100)
+    athlete.stamina = clamp(athlete.stamina + (command ? -ACTIONS[command.kind].stamina : athlete.technique === 'second-wind' ? 10 : 6), 0, 100)
   }
   next.randomState = random.state
   next.turn += 1

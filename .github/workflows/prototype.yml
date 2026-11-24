@@ -30,3 +30,43 @@ jobs:
           name: turn-pro-playtest
           path: dist/turn-pro.html
           if-no-files-found: error
+
+  desktop:
+    name: Desktop playtest (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: linux, runner: ubuntu-latest }
+          - { os: windows, runner: windows-latest }
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run desktop:package
+      - if: matrix.os == 'linux'
+        run: |
+          npx playwright install-deps chromium
+          xvfb-run -a npm run desktop:smoke
+          tar -czf release/TurnPro-linux-x64.tar.gz -C release TurnPro-linux-x64
+      - if: matrix.os == 'windows'
+        run: |
+          npm run desktop:smoke
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path release/TurnPro-win32-x64 -DestinationPath release/TurnPro-windows-x64.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: turn-pro-${{ matrix.os }}-x64
+          retention-days: 14
+          compression-level: 0
+          path: |
+            release/*.zip
+            release/*.tar.gz
+          if-no-files-found: error
