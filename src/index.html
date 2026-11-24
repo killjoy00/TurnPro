@@ -14,10 +14,17 @@
         <option value="basketball">Basketball · 5-on-5</option>
         <option value="soccer">Soccer · 11-on-11</option>
       </select>
+      <button id="club-nav" class="club-nav" type="button">Club season</button>
       <button id="restart" class="restart" type="button">New match</button>
     </div>
   </header>
-  <main>
+  <p id="save-warning" class="save-warning" role="status" hidden></p>
+  <main id="club-screen" hidden></main>
+  <main id="match-screen">
+    <div id="quick-defense" class="quick-defense">
+      <label for="defense">Opponent defense</label>
+      <select id="defense" aria-label="Opponent defense"></select>
+    </div>
     <section id="scoreboard" class="scoreboard" aria-label="Scoreboard" aria-live="polite"></section>
     <div class="match-layout">
       <section aria-labelledby="court-title" class="court-section">
@@ -43,7 +50,7 @@
             <option value="3">3</option>
             <option value="4">4</option>
           </select>
-          <button id="practice" type="button">Practice a cross</button>
+          <span id="practice-tools" class="practice-tools"></span>
         </div>
         <div id="orders" class="orders" aria-label="Queued commands"></div>
         <div id="actions" class="actions"></div>

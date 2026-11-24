@@ -1,9 +1,13 @@
 import * as basketball from './basketball.ts'
 import * as soccer from './soccer.ts'
 import { mountGame, type SportView } from './game-view.ts'
-import { planTurn as basketballAI } from './opponent.ts'
+import { DEFENSE_NAMES, planTurn as basketballAI, type DefenseStyle } from './opponent.ts'
 import { planTurn as soccerAI } from './soccer-opponent.ts'
 import { drawBasketball, drawSoccer } from './surfaces.ts'
+import { readClub, recruit, setStarter, specialize, train, type Club } from './club.ts'
+import { beginClubFixture, openClubFixture, saveClubTurn } from './club-fixture.ts'
+import { mountClub } from './club-view.ts'
+import type { MatchSnapshot, PlanCommand } from './match.ts'
 
 const basketballView: SportView<basketball.Match, basketball.Command> = {
   id: 'basketball',
@@ -31,6 +35,7 @@ const basketballView: SportView<basketball.Match, basketball.Command> = {
   resolveTurn: basketball.resolveTurn,
   draw: drawBasketball,
   clockDetail: () => 'Planning',
+  opponentDetail: () => 'Balanced',
 }
 
 const soccerView: SportView<soccer.Match, soccer.Command> = {
@@ -40,33 +45,47 @@ const soccerView: SportView<soccer.Match, soccer.Command> = {
   width: soccer.PITCH.width,
   height: soccer.PITCH.length,
   turnLimit: soccer.TURN_LIMIT,
-  create: (seed, limit) => soccer.createMatch(seed, 0, limit),
-  practice: {
-    create: soccer.createCrossingPractice,
-    intro: 'Queue Vale’s cross to Adeyemi. Send Adeyemi into the middle, then commit.',
-  },
+  create: (seed, limit) => soccer.createMatch(seed, 0, limit, defense.value as soccer.DefenseShape),
+  practices: [
+    {
+      name: 'Beat the press',
+      create: soccer.createPressPractice,
+      intro: 'Send Adeyemi through the middle and play Reed’s through ball before the press closes.',
+    },
+    {
+      name: 'Practice a cross',
+      create: soccer.createCrossingPractice,
+      intro: 'Queue Vale’s cross to Adeyemi. Send Adeyemi into the middle, then commit.',
+    },
+  ],
   limit: match => match.commandLimit,
   legalCommands: soccer.legalCommands,
   label: soccer.commandLabel,
   stamina: command => soccer.ACTIONS[command.kind].stamina,
-  preview(match, command) {
+  preview(match, command, plan) {
     const player = soccer.athleteById(match, command.athlete)
     if (command.kind === 'shoot') {
       return `~${soccer.shotEstimate(match, player).goal}% goal now · `
     }
     if ('target' in command && command.kind !== 'run') {
-      const receiver = soccer.athleteById(match, command.target)
-      if (soccer.startsOffside(match, player, receiver)) return 'Offside · '
+      const pass = soccer.previewPass(match, command, plan)
+      if (pass.offside) return 'Offside · '
+      const lane = pass.defenders.length === 0 ? 'Clear' : pass.defenders.length === 1 ? 'Guarded' : 'Crowded'
+      return `${lane} · ~${Math.round(pass.chance)}% · `
     }
     return ''
   },
   noOrders: athlete => athlete.role === 'GK'
     ? 'Your keeper tracks the ball and attempts saves automatically.'
     : 'Recover stamina while your team keeps its shape.',
-  previewTarget: soccer.commandTarget,
+  previewTarget(match, command, plan) {
+    return 'target' in command && command.kind !== 'run'
+      ? soccer.previewPass(match, command, plan).destination : soccer.commandTarget(match, command)
+  },
   opponent: soccerAI,
   resolveTurn: soccer.resolveTurn,
   draw: drawSoccer,
+  opponentDetail: match => soccer.SHAPE_NAMES[match.shapes[1]],
   clockDetail(match, portrait) {
     const forwards = soccer.direction(match, 0) === 1
     const attack = portrait ? (forwards ? 'up' : 'down') : (forwards ? 'right' : 'left')
@@ -75,12 +94,118 @@ const soccerView: SportView<soccer.Match, soccer.Command> = {
 }
 
 const selector = document.getElementById('sport') as HTMLSelectElement
-let game: AbortController | undefined
-function changeSport() {
-  game?.abort()
-  game = new AbortController()
-  if (selector.value === 'soccer') mountGame(soccerView, game.signal)
-  else mountGame(basketballView, game.signal)
+const defense = document.getElementById('defense') as HTMLSelectElement
+const clubNav = document.getElementById('club-nav') as HTMLButtonElement
+const clubScreen = document.getElementById('club-screen')!
+const matchScreen = document.getElementById('match-screen')!
+const warning = document.getElementById('save-warning')!
+const key = 'turn-pro-club-v1'
+let screen: 'quick' | 'club' | 'fixture' = 'quick'
+let route = new AbortController()
+let club: Club | null = null
+let lastSaved: string | null = null
+
+function warn(message: string) {
+  warning.hidden = !message
+  warning.textContent = message
 }
-selector.addEventListener('change', changeSport)
-changeSport()
+
+function verifySave(raw: string) {
+  const state = readClub(raw)
+  if (state.pending) openClubFixture(state)
+  return state
+}
+
+try {
+  lastSaved = localStorage.getItem(key)
+  if (lastSaved) club = verifySave(lastSaved)
+} catch {
+  warn('Could not open the local club save. You can import an earlier export from the club screen.')
+}
+
+function updateClub(next: Club) {
+  club = next
+  try {
+    if (localStorage.getItem(key) !== lastSaved) {
+      warn('The local save changed in another tab. Export this club to keep your current progress.')
+      return
+    }
+    const json = JSON.stringify(next)
+    localStorage.setItem(key, json)
+    lastSaved = json
+    warn('')
+  } catch {
+    warn('This browser could not save the club. Export the save from the club screen to keep your progress.')
+  }
+}
+
+function changeScreen(next: typeof screen) {
+  route.abort()
+  route = new AbortController()
+  screen = next
+  clubScreen.hidden = next !== 'club'
+  matchScreen.hidden = next === 'club'
+  selector.hidden = next !== 'quick'
+  document.getElementById('restart')!.hidden = next !== 'quick'
+  document.getElementById('quick-defense')!.hidden = next !== 'quick'
+  clubNav.textContent = next === 'club' ? 'Quick match' : next === 'fixture' ? 'Back to club' : 'Club season'
+}
+
+function basketballDefense(style: DefenseStyle): typeof basketballView {
+  return { ...basketballView, opponent: (match, team) => basketballAI(match, team, style),
+    opponentDetail: () => DEFENSE_NAMES[style] }
+}
+
+function showQuick(resetDefense: boolean) {
+  changeScreen('quick')
+  if (resetDefense) {
+    const options = selector.value === 'soccer' ? soccer.SHAPE_NAMES : DEFENSE_NAMES
+    defense.replaceChildren(...Object.entries(options).map(([value, label]) => new Option(label, value)))
+  }
+  if (selector.value === 'soccer') mountGame(soccerView, route.signal)
+  else mountGame(basketballDefense(defense.value as DefenseStyle), route.signal)
+}
+
+function enterFixture() {
+  if (!club) return
+  const active = club.pending ? club : beginClubFixture(club)
+  const session = openClubFixture(active)
+  if (active !== club) updateClub(active)
+  changeScreen('fixture')
+  const saveTurn = (orders: readonly PlanCommand[], match: MatchSnapshot) => updateClub(saveClubTurn(club!, orders, match))
+  if (session.sport === 'basketball') mountGame(basketballDefense(session.defense), route.signal, { ...session, saveTurn })
+  else mountGame(soccerView, route.signal, { ...session, saveTurn })
+}
+
+function showClub() {
+  changeScreen('club')
+  const signal = route.signal
+  mountClub(clubScreen, {
+    getClub: () => club,
+    update: updateClub,
+    start: enterFixture,
+    recruit: id => updateClub(recruit(club!, id)),
+    train: (id, sport) => updateClub(train(club!, id, sport)),
+    specialize: (id, choice) => updateClub(specialize(club!, id, choice)),
+    changeStarter: (sport, slot, id) => updateClub(setStarter(club!, sport, slot, id)),
+    exportSave() {
+      const file = new Blob([JSON.stringify(club, null, 2)], { type: 'application/json' })
+      const href = URL.createObjectURL(file)
+      const link = document.createElement('a')
+      link.href = href
+      link.download = 'turn-pro-club.json'
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(href), 1000)
+    },
+    async importSave(file) {
+      if (file.size > 128_000) throw new Error('Invalid club save.')
+      const raw = await file.text()
+      if (!signal.aborted) updateClub(verifySave(raw))
+    },
+  }, signal)
+}
+
+selector.addEventListener('change', () => showQuick(true))
+defense.addEventListener('change', () => showQuick(false))
+clubNav.addEventListener('click', () => screen === 'club' ? showQuick(true) : showClub())
+showQuick(true)

@@ -17,7 +17,12 @@ function choose<T>(candidates: readonly T[], value: (candidate: T) => number): T
   return best
 }
 
-export function planTurn(match: Match, team: Team, style: 'balanced' | 'pressure' = 'balanced'): Command[] {
+export type DefenseStyle = 'balanced' | 'pressure' | 'switch' | 'help' | 'stay'
+export const DEFENSE_NAMES: Record<DefenseStyle, string> = {
+  balanced: 'Balanced', pressure: 'Deny passes', switch: 'Switch screens', help: 'Help in the paint', stay: 'Stay with shooters',
+}
+
+export function planTurn(match: Match, team: Team, style: DefenseStyle = 'balanced'): Command[] {
   const athletes = match.athletes.filter(athlete => athlete.team === team)
   const holder = athleteById(match, match.holder)
   const commands: Command[] = []
@@ -37,12 +42,21 @@ export function planTurn(match: Match, team: Team, style: 'balanced' | 'pressure
     const receivingShot = receiver && shotEstimate(match, receiver)
     const shoot = available(holder).find(command => command.kind === 'shoot')
     const drive = available(holder).find(command => command.kind === 'drive')
-    if (shoot && (expected >= 125 || current.range <= 11 || holder.stamina < 55 || match.turn === TURN_LIMIT)) {
+    const finish = available(holder).find(command => command.kind === 'finish')
+    const kickout = choose(available(holder).filter(command => command.kind === 'kickout'), command => {
+      const shot = shotEstimate(match, athleteById(match, command.target))
+      return shot.chance * shot.points
+    })
+    const outlet = kickout && shotEstimate(match, athleteById(match, kickout.target))
+    if (kickout && outlet && current.pressure >= 25 && outlet.points * outlet.chance > expected + 20) {
+      add(kickout)
+      add(available(athleteById(match, kickout.target)).find(command => command.kind === 'catch-shoot'))
+    } else if (shoot && (expected >= 125 || current.range <= 11 || holder.stamina < 55 || match.turn === TURN_LIMIT)) {
       add(shoot)
     } else if (pass && receivingShot && receivingShot.chance * receivingShot.points >= expected + 27) {
       add(pass)
     } else {
-      add(drive ?? shoot ?? pass)
+      add((finish && current.range <= 23 ? finish : drive) ?? shoot ?? pass)
     }
 
     const screener = choose(athletes.filter(athlete => available(athlete).some(command => command.kind === 'screen')),
@@ -54,7 +68,7 @@ export function planTurn(match: Match, team: Team, style: 'balanced' | 'pressure
     const runner = choose(athletes.filter(athlete => athlete.id !== holder.id
       && !commands.some(command => command.athlete === athlete.id)),
     athlete => athlete.shooting + (receiver?.id === athlete.id ? 4 : 0))
-    if (runner) {
+    if (runner && commands.length < 3) {
       const cuts = available(runner).filter(command => command.kind === 'cut')
       add(choose(cuts, command => {
         const target = LANDMARKS[command.target]
@@ -78,7 +92,8 @@ export function planTurn(match: Match, team: Team, style: 'balanced' | 'pressure
         athlete => shotEstimate(match, athlete).chance - distance(athlete.position, help.position))
       const deny = available(help).find(command => command.kind === 'deny' && command.target === nearbyThreat?.id)
       const protect = available(help).find(command => command.kind === 'protect')
-      add(style === 'pressure' ? deny ?? protect : protect)
+      const response = available(help).find(command => command.kind === style)
+      add(style === 'pressure' ? deny ?? protect : response ?? protect)
     }
   }
 

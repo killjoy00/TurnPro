@@ -63,11 +63,17 @@ export function planTurn(match: Match, team: Team): Command[] {
     const pressers = options.filter(command => command.kind === 'press')
       .sort((a, b) => distance(findAthlete(squad, a.athlete).position, holder.position)
         - distance(findAthlete(squad, b.athlete).position, holder.position))
-    const count = pressers[0] && distance(findAthlete(squad, pressers[0].athlete).position, holder.position) <= 13 ? 2 : 1
+    const shape = match.shapes[team]
+    const close = pressers[0] && distance(findAthlete(squad, pressers[0].athlete).position, holder.position) <= 13
+    const count = shape === 'press' ? (close ? 3 : 2) : shape === 'compact' ? 0 : close ? 2 : 1
     plan.push(...pressers.slice(0, count))
     const cover = options.filter(command => command.kind === 'hold' && !plan.some(placed => placed.athlete === command.athlete))
-      .sort((a, b) => Math.abs(findAthlete(squad, a.athlete).position.y - holder.position.y)
-        - Math.abs(findAthlete(squad, b.athlete).position.y - holder.position.y))
+      .sort((a, b) => {
+        const left = findAthlete(squad, a.athlete)
+        const right = findAthlete(squad, b.athlete)
+        return (shape === 'compact' ? (left.slot <= 5 ? 0 : 30) - (right.slot <= 5 ? 0 : 30) : 0)
+          + Math.abs(left.position.y - holder.position.y) - Math.abs(right.position.y - holder.position.y)
+      })
     plan.push(...cover.slice(0, match.commandLimit - plan.length))
   }
   return plan

@@ -171,3 +171,62 @@ h2 { font-size: 1rem; font-weight: 780; letter-spacing: .016em; }
 @media (max-width: 560px) {
   .soccer .court { aspect-ratio: 0.94; }
 }
+
+[hidden] { display: none !important; }
+.club-nav, .club-actions button, .recruits button, .import-save {
+  border: 1px solid var(--line); background: #1d2c30; border-radius: 4px; color: inherit;
+  min-height: 40px; padding: 7px 12px; font: inherit; font-weight: 650; cursor: pointer;
+}
+.club-nav { margin-left: auto; white-space: nowrap; }
+.club-nav + .restart { margin-left: 0; }
+.club-nav:hover, .club-actions button:hover, .recruits button:hover, .import-save:hover { border-color: var(--lime); }
+.quick-defense { display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-bottom: 10px; color: var(--muted); font-size: .83rem; }
+.quick-defense select, .club-panel select {
+  background: #19282b; color: #f5f5e9; border: 1px solid var(--line); border-radius: 4px;
+  min-height: 38px; padding: 4px 8px; font: inherit;
+}
+.practice-tools { margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px; }
+.save-warning { max-width: 1200px; padding: 6px 24px; margin: 6px auto 0; color: var(--away); }
+.club-hero, .club-panel { border: 1px solid var(--line); background: #17272b; padding: 16px; min-width: 0; }
+.club-hero { border-top: 2px solid var(--home); }
+.club-hero h2 { font-size: 1.45rem; margin-bottom: 8px; }
+.club-hero p + p { margin-top: 6px; }
+.season-record, .muted { color: var(--muted); }
+.club-actions { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; margin: 10px 0 0; }
+.club-actions button[aria-pressed="true"], .roster-entry[aria-pressed="true"] { border-color: var(--home); }
+.club-actions .primary { background: var(--lime); color: #19231c; border-color: var(--lime); }
+.club-actions button:disabled { opacity: .6; }
+.club-status { color: var(--lime); margin-top: 8px; }
+.club-status:empty { display: none; }
+.club-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin: 14px 0; align-items: start; }
+.club-panel h3 { margin: 0 0 8px; font-size: 1rem; }
+.schedule { border-collapse: collapse; width: 100%; font-size: .86rem; }
+.schedule th, .schedule td { padding: 8px 5px; text-align: left; border-bottom: 1px solid var(--line); }
+.schedule th { color: var(--muted); }
+.schedule .up-next { color: var(--lime); }
+.schedule-scroll { overflow-x: auto; }
+.lineup-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+.lineup-choice { display: flex; align-items: center; gap: 5px; justify-content: space-between; margin: 6px 0; font-size: .82rem; }
+.lineup-choice select { min-width: 0; max-width: 83%; }
+.roster-list, .recruits { display: grid; grid-template-columns: repeat(auto-fit, minmax(108px, 1fr)); gap: 6px; }
+.roster-entry { min-height: 54px; display: grid; gap: 3px; text-align: left; padding: 7px; border: 1px solid var(--line); background: #213135; }
+.roster-entry span, .roster-entry small, .sport-stats small { color: var(--muted); font-size: .75rem; }
+.sport-stats { list-style: none; padding: 0; }
+.sport-stats li { border-bottom: 1px solid var(--line); padding: 5px 0; font-size: .86rem; }
+.sport-stats small { display: block; }
+.recruits { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.recruits p { color: var(--muted); margin: 4px 0 8px; font-size: .82rem; }
+.import-save { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.import-save input { max-width: 100%; }
+@media (max-width: 700px) {
+  .club-grid { grid-template-columns: minmax(0, 1fr); }
+  .topbar-inner { gap: 6px 9px; flex-wrap: wrap; padding-block: 6px; }
+  .club-nav, .restart { min-height: 35px; padding: 4px 8px; font-size: .8rem; }
+  .club-nav { margin-left: auto; }
+  .sport-select { min-height: 35px; }
+  .save-warning { padding-inline: 14px; }
+}
+
+@media (max-width: 450px) {
+  .lineup-options { grid-template-columns: minmax(0, 1fr); }
+}

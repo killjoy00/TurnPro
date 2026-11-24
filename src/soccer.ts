@@ -1,13 +1,13 @@
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
 import {
-  COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, TEAMS, validatePlans,
+  COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, teamNames, validatePlans,
   type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type Team, type TurnEvent,
 } from './match.ts'
 
 export const PITCH = { width: 105, length: 68 }
 export const HALF_TURNS = 9
 export const TURN_LIMIT = HALF_TURNS * 2
-const RULES_VERSION = 1
+export const RULES_VERSION = 2
 const MIDFIELD = { x: PITCH.width / 2, y: PITCH.length / 2 }
 const SHOT_RANGE = 32
 
@@ -30,11 +30,14 @@ interface Footballer extends AthleteSnapshot {
 }
 
 export type Budget = 3 | 4
+export type DefenseShape = 'balanced' | 'press' | 'compact'
+export const SHAPE_NAMES: Record<DefenseShape, string> = { balanced: 'Balanced', press: 'High press', compact: 'Compact defense' }
 export interface Match extends MatchSnapshot {
   rulesVersion: number
   athletes: Footballer[]
   openingTeam: Team
   commandLimit: Budget
+  shapes: [DefenseShape, DefenseShape]
   randomState: number
 }
 
@@ -94,7 +97,7 @@ function kickoff(match: Match, team: Team) {
   match.holder = kicker.id
 }
 
-export function createMatch(seed: number, openingTeam: Team = 0, commandLimit: Budget = COMMAND_LIMIT): Match {
+export function createMatch(seed: number, openingTeam: Team = 0, commandLimit: Budget = COMMAND_LIMIT, opponent: DefenseShape = 'balanced'): Match {
   if (commandLimit !== 3 && commandLimit !== 4) throw new Error('Soccer supports three or four commands.')
   const athletes = NAMES.flatMap((names, side) => names.map((name, slot) => ({
     id: `${side}-${slot}`, team: side as Team, slot, name,
@@ -107,19 +110,29 @@ export function createMatch(seed: number, openingTeam: Team = 0, commandLimit: B
   })))
   const match: Match = {
     rulesVersion: RULES_VERSION, turn: 1, seed: seed >>> 0, randomState: seed >>> 0,
-    score: [0, 0], holder: '', athletes, openingTeam, commandLimit,
+    score: [0, 0], holder: '', athletes, openingTeam, commandLimit, shapes: ['balanced', opponent],
   }
   kickoff(match, openingTeam)
   return match
 }
 
 export function createCrossingPractice(commandLimit: Budget = COMMAND_LIMIT): Match {
-  const match = createMatch(2, 0, commandLimit)
+  const match = createMatch(2, 0, commandLimit, 'compact')
   match.holder = '0-8'
   athleteById(match, '0-8').position = { x: 78, y: 9 }
   athleteById(match, '0-9').position = { x: 81, y: 34 }
   athleteById(match, '1-2').position = { x: 90, y: 22 }
   athleteById(match, '1-3').position = { x: 89, y: 46 }
+  return match
+}
+
+export function createPressPractice(commandLimit: Budget = COMMAND_LIMIT): Match {
+  const match = createMatch(12, 0, commandLimit, 'press')
+  athleteById(match, '0-6').position = { x: 59, y: 34 }
+  athleteById(match, '0-9').position = { x: 67, y: 34 }
+  athleteById(match, '1-2').position = { x: 82, y: 25 }
+  athleteById(match, '1-3').position = { x: 82, y: 43 }
+  athleteById(match, '1-6').position = { x: 64, y: 27 }
   return match
 }
 
@@ -208,7 +221,13 @@ function formationAssignment(match: Match, player: Footballer, holder: Footballe
   }
   const dx = clamp((holder.position.x - MIDFIELD.x) * 0.36, -17, 17)
   const dy = clamp((holder.position.y - MIDFIELD.y) * 0.26, -7, 7)
-  return { x: home.x + dx, y: home.y + (holdLine ? 0 : dy) }
+  const shape = player.team === holder.team ? 'balanced' : match.shapes[player.team]
+  const shift = shape === 'press' ? 7 : shape === 'compact' ? -9 : 0
+  const width = shape === 'compact' ? 0.7 : 1
+  return {
+    x: home.x + dx + direction(match, player.team) * shift,
+    y: MIDFIELD.y + (home.y - MIDFIELD.y) * width + (holdLine ? 0 : dy),
+  }
 }
 
 function moveRange(player: Footballer): number {
@@ -269,9 +288,31 @@ export function passEstimate(match: Match, from: Footballer, target: Point, kind
     .sort((a, b) => distanceToSegment(a.position, from.position, target) - distanceToSegment(b.position, from.position, target))
   const defenders = kind === 'cross' ? lane.filter(player => distance(player.position, target) <= 7) : lane
   const base = kind === 'cross' ? 90 : kind === 'through' ? 94 : 105
-  const chance = clamp(base - range * 0.55 - defenders.length * 14 + (from.passing - 7) * 3
+  const chance = clamp(base - range * 0.55 - defenders.reduce((cost, defender) => cost + 13 + (defender.defense ?? 0), 0)
+    + (from.passing - 7) * 3 + ((from.awareness ?? 6) - 6) * 1.5
     - Math.max(0, 65 - from.stamina) * 0.35, 14, 98)
   return { chance, defenders, range }
+}
+
+type Pass = Extract<Command, { target: string }>
+
+function passArrival(match: Match, from: Footballer, position: Point, kind: Pass['kind']): Point {
+  const lead = kind === 'through' ? direction(match, from.team) * 4 : 0
+  return { x: clamp(position.x + lead, 2.5, PITCH.width - 2.5), y: position.y }
+}
+
+export function previewPass(match: Match, command: Pass, plan: readonly Command[]) {
+  const from = athleteById(match, command.athlete)
+  const receiver = athleteById(match, command.target)
+  const ownOrder = plan.find(order => order.athlete === receiver.id)
+  const destination = passArrival(match, from, movement(match, receiver, from, ownOrder), command.kind)
+  const projected = {
+    ...match,
+    athletes: match.athletes.map(player => player.team === from.team
+      ? player : { ...player, position: movement(match, player, from) }),
+  }
+  return { ...passEstimate(projected, from, destination, command.kind), destination,
+    offside: startsOffside(match, from, receiver) }
 }
 
 function resolvePass(
@@ -285,10 +326,10 @@ function resolvePass(
     emit('turnover', `${target.name} started beyond the defensive line. ${defender.name} takes the offside restart.`)
     return
   }
-  const lead = command.kind === 'through' ? direction(match, holder.team) * 4 : 0
-  const reception = { x: clamp(target.position.x + lead, 2.5, PITCH.width - 2.5), y: target.position.y }
+  const reception = passArrival(match, holder, target.position, command.kind)
   const { chance, defenders, range } = passEstimate(match, holder, reception, command.kind)
-  const detail = `${Math.round(range)} m, ${defenders.length} in the lane, ${Math.round(chance)}% completion`
+  const coverage = defenders.length ? `${defenders.map(player => player.name).join(' and ')} in the lane` : 'clear lane'
+  const detail = `${Math.round(range)} m, ${coverage}, ${Math.round(chance)}% completion`
   if (roll() < chance) {
     target.position = reception
     match.holder = target.id
@@ -335,22 +376,22 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     if (roll() >= shot.onTarget) {
       keeper.position = oriented(next, defense, { x: 5.5, y: MIDFIELD.y })
       next.holder = keeper.id
-      emit('restart', `${holder.name} shoots wide (${detail}). Goal kick for ${TEAMS[defense]}.`)
+      emit('restart', `${holder.name} shoots wide (${detail}). Goal kick for ${teamNames(next)[defense]}.`)
     } else if (roll() < shot.save) {
       next.holder = keeper.id
       emit('save', `${keeper.name} saves ${holder.name}'s shot and holds it (${detail}).`)
     } else {
       next.score[holder.team] += 1
-      emit('score', `${holder.name} scores for ${TEAMS[holder.team]} (${detail}).`)
+      emit('score', `${holder.name} scores for ${teamNames(next)[holder.team]} (${detail}).`)
       kickoff(next, defense)
-      emit('restart', `${TEAMS[defense]} restart at midfield.`)
+      emit('restart', `${teamNames(next)[defense]} restart at midfield.`)
     }
   } else if (ballCommand && 'target' in ballCommand && ballCommand.kind !== 'run') {
     resolvePass(next, match, holder, ballCommand, roll, emit)
   } else {
     const challenger = nearBall(next, holder, 3.4).find(player => commands.get(player.id)?.kind === 'press')
     if (challenger) {
-      const chance = clamp(32 + (challenger.pace - holder.pace) * 4 + (100 - holder.stamina) * 0.22, 15, 75)
+      const chance = clamp(32 + (challenger.pace - holder.pace) * 4 + (100 - holder.stamina) * 0.22 + (challenger.defense ?? 0) * 3, 15, 75)
       if (roll() < chance) {
         next.holder = challenger.id
         emit('turnover', `${challenger.name} wins the ball from ${holder.name} (${Math.round(chance)}% tackle chance).`)
@@ -371,8 +412,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   if (next.turn === HALF_TURNS + 1) {
     const startingTeam = otherTeam(match.openingTeam)
     kickoff(next, startingTeam)
-    emit('restart', `Half-time. Teams switch ends. ${TEAMS[startingTeam]} start the second half.`)
+    emit('restart', `Half-time. Teams switch ends. ${teamNames(next)[startingTeam]} start the second half.`)
   }
-  if (finished(next)) emit('finish', finalScore(next.score))
+  if (finished(next)) emit('finish', finalScore(next))
   return { match: next, events }
 }

@@ -1,8 +1,9 @@
 import {
-  findAthlete, TEAMS,
+  findAthlete, teamNames,
   type AthleteSnapshot, type MatchSnapshot, type PlanCommand, type Plans, type Team, type TurnEvent,
 } from './match.ts'
 import type { Point } from './math.ts'
+import type { LoggedTurn } from './club-fixture.ts'
 
 export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
   id: 'basketball' | 'soccer'
@@ -12,18 +13,19 @@ export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
   height: number
   turnLimit: number
   create(seed: number, budget: 3 | 4): S
-  practice?: { create(budget: 3 | 4): S; intro: string }
+  practices?: { name: string; create(budget: 3 | 4): S; intro: string }[]
   limit(match: S): number
   legalCommands(match: S, id: string): C[]
   label(match: S, command: C): string
   stamina(command: C): number
-  preview(match: S, command: C): string
+  preview(match: S, command: C, plan: readonly C[]): string
   noOrders(athlete: AthleteSnapshot): string
-  previewTarget(match: S, command: C): Point | undefined
+  previewTarget(match: S, command: C, plan: readonly C[]): Point | undefined
   opponent(match: S, team: Team): C[]
   resolveTurn(match: S, plans: Plans<C>): { match: S; events: TurnEvent[] }
   draw(context: CanvasRenderingContext2D): void
   clockDetail(match: S, portrait: boolean): string
+  opponentDetail(match: S): string
 }
 
 function element<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -44,16 +46,27 @@ const turns = element('turns')
 const canvas = element<HTMLCanvasElement>('court-lines')
 const context = canvas.getContext('2d')!
 
-export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(sport: SportView<S, C>, signal: AbortSignal) {
+interface SeasonMatch<S extends MatchSnapshot, C extends PlanCommand> {
+  match: S
+  history: LoggedTurn[]
+  saveTurn(orders: readonly C[], match: S): void
+}
+
+export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
+  sport: SportView<S, C>, signal: AbortSignal, season?: SeasonMatch<S, C>,
+) {
   const budgetPreset = element('budget-preset')
-  const practice = element<HTMLButtonElement>('practice')
+  const practice = element('practice-tools')
   const budgetInput = element<HTMLSelectElement>('budget-mode')
   const nextBudget = () => budgetInput.value === '4' ? 4 : 3
   const portrait = matchMedia('(max-width: 560px)')
   const isPortrait = () => sport.id === 'soccer' && portrait.matches
-  let match = sport.create(2026, nextBudget())
+  let match = season?.match ?? sport.create(2026, nextBudget())
   let selected = selectPlayer()
   let plan: C[] = []
+  const teams = teamNames(match)
+  const restartButton = element<HTMLButtonElement>('restart')
+  restartButton.hidden = Boolean(season)
 
   function selectPlayer(): string {
     const holder = findAthlete(match.athletes, match.holder)
@@ -77,7 +90,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(sport:
     context.setLineDash([0.8, 0.55])
     for (const command of plan) {
       const from = findAthlete(match.athletes, command.athlete).position
-      const to = sport.previewTarget(match, command)
+      const to = sport.previewTarget(match, command, plan)
       if (!to) continue
       context.beginPath()
       context.moveTo(from.x, from.y)
@@ -90,26 +103,26 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(sport:
   function renderScore() {
     const [home, away] = match.score
     const clock = (match.turn > sport.turnLimit)
-      ? `<strong>Final</strong>${home === away ? 'Draw' : `${TEAMS[home > away ? 0 : 1]} win`}`
+      ? `<strong>Final</strong>${home === away ? 'Draw' : `${teams[home > away ? 0 : 1]} win`}`
       : `<strong>Turn ${match.turn} / ${sport.turnLimit}</strong>${sport.clockDetail(match, isPortrait())}`
     scoreboard.innerHTML = `
       <div class="team-score home">
-        <div class="team-name"><b>${TEAMS[0]}</b><small>You</small></div><strong class="points">${home}</strong>
+        <div class="team-name"><b>${teams[0]}</b><small>You</small></div><strong class="points">${home}</strong>
       </div>
       <div class="turn-clock">${clock}</div>
       <div class="team-score away">
-        <strong class="points">${away}</strong><div class="team-name"><b>${TEAMS[1]}</b><small>CPU</small></div>
+        <strong class="points">${away}</strong><div class="team-name"><b>${teams[1]}</b><small>${sport.opponentDetail(match)}</small></div>
       </div>`
   }
 
   function renderBoard() {
     const holder = findAthlete(match.athletes, match.holder)
     possession.classList.toggle('away', holder.team === 1)
-    possession.innerHTML = (match.turn > sport.turnLimit) ? 'Match complete' : `Ball <strong>${TEAMS[holder.team]} · ${holder.name}</strong>`
+    possession.innerHTML = (match.turn > sport.turnLimit) ? 'Match complete' : `Ball <strong>${teams[holder.team]} · ${holder.name}</strong>`
     markers.innerHTML = match.athletes.map(athlete => {
       const ownsBall = athlete.id === holder.id && !(match.turn > sport.turnLimit)
       const queued = plan.some(command => command.athlete === athlete.id)
-      const description = `${TEAMS[athlete.team]} ${athlete.name}, number ${athlete.number}${ownsBall ? ', has the ball' : ''}${queued ? ', command queued' : ''}`
+      const description = `${teams[athlete.team]} ${athlete.name}, number ${athlete.number}${ownsBall ? ', has the ball' : ''}${queued ? ', command queued' : ''}`
       const position = project(athlete.position)
       return `<button type="button" class="marker ${athlete.team ? 'away' : 'home'} ${queued ? 'queued' : ''}"
         style="left:${position.x * 100}%;top:${position.y * 100}%"
@@ -142,7 +155,9 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(sport:
     }).join('')}</ul>` : ''
 
     if ((match.turn > sport.turnLimit)) {
-      actions.innerHTML = '<p class="instructions">Review the play-by-play or start a new match.</p>'
+      actions.innerHTML = season
+        ? '<p class="instructions">Fixture recorded. Return to the club to see the result and prepare for the next match.</p>'
+        : '<p class="instructions">Review the play-by-play or start a new match.</p>'
       commit.disabled = true
       note.textContent = ''
       return
@@ -163,7 +178,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(sport:
       </div><p class="instructions">${instruction}</p>
       <ul class="options" ${commands.length ? '' : 'hidden'}>${commands.map((command, index) => {
         const label = sport.label(match, command)
-        const detail = sport.preview(match, command)
+        const detail = sport.preview(match, command, plan)
         return `<li><button class="option" type="button" data-command="${index}"
         aria-pressed="${Boolean(active && sport.label(match, active) === label)}">
           <span>${label}</span><small>${detail}−${sport.stamina(command)} STA</small>
@@ -212,7 +227,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(sport:
     lineup.querySelector<HTMLButtonElement>(`[data-athlete="${selected}"]`)?.focus()
   }, { signal })
 
-  function recordTurn(turn: number, events: TurnEvent[]) {
+  function recordTurn(turn: number, events: TurnEvent[], score = match.score) {
     const important = events.find(event => event.kind === 'finish')
       ?? events.find(event => event.kind === 'score')
       ?? events.find(event => event.kind === 'save')
@@ -228,7 +243,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(sport:
     const detail = document.createElement('details')
     detail.className = 'turn'
     detail.open = true
-    detail.innerHTML = `<summary>Turn ${turn} · ${match.score.join('–')}</summary>
+    detail.innerHTML = `<summary>Turn ${turn} · ${score.join('–')}</summary>
       <ul class="timeline">${events.map(event => `<li class="${event.kind}">${event.text}</li>`).join('')}</ul>`
     turns.prepend(detail)
   }
@@ -238,12 +253,13 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(sport:
     const turn = match.turn
     const opponent = sport.opponent(match, 1)
     const resolution = sport.resolveTurn(match, [plan, opponent])
+    season?.saveTurn(plan, resolution.match)
     match = resolution.match
     plan = []
     selected = selectPlayer()
     render()
     recordTurn(turn, resolution.events)
-    if ((match.turn > sport.turnLimit)) element<HTMLButtonElement>('restart').focus()
+    if (match.turn > sport.turnLimit) (season ? element<HTMLButtonElement>('club-nav') : restartButton).focus()
   }, { signal })
 
   function restart(next: S, message: string) {
@@ -255,22 +271,29 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(sport:
     render()
   }
 
-  element<HTMLButtonElement>('restart').addEventListener('click', () => {
-    restart(sport.create((match.seed + 1) >>> 0, nextBudget()), 'New match. The Comets start with the ball.')
-  }, { signal })
-
-  const drill = sport.practice
-  practice.hidden = !drill
-  if (drill) {
-    practice.addEventListener('click', () => restart(drill.create(nextBudget()), drill.intro), { signal })
+  if (!season) {
+    restartButton.addEventListener('click', () => {
+      restart(sport.create((match.seed + 1) >>> 0, nextBudget()), 'New match. The Comets start with the ball.')
+    }, { signal })
   }
 
+  practice.replaceChildren()
+  if (!season) {
+    for (const drill of sport.practices ?? []) {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.textContent = drill.name
+      button.addEventListener('click', () => restart(drill.create(nextBudget()), drill.intro), { signal })
+      practice.append(button)
+    }
+  }
   summary.textContent = sport.intro
   turns.replaceChildren()
+  for (const entry of season?.history ?? []) recordTurn(entry.turn, entry.events, entry.score)
   document.body.classList.toggle('soccer', sport.id === 'soccer')
   element('court-title').textContent = sport.surfaceName
   markers.setAttribute('aria-label', sport.id === 'soccer' ? 'Athletes on pitch' : 'Athletes on court')
-  budgetPreset.hidden = sport.id !== 'soccer'
+  budgetPreset.hidden = Boolean(season) || sport.id !== 'soccer'
   portrait.addEventListener('change', render, { signal })
 
   render()

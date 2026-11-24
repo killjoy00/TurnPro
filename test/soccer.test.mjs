@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  athleteById, createCrossingPractice, createMatch, direction, finished, HALF_TURNS, legalCommands, resolveTurn, TURN_LIMIT,
+  athleteById, createCrossingPractice, createMatch, createPressPractice, direction, finished, HALF_TURNS, legalCommands, previewPass, resolveTurn, TURN_LIMIT,
 } from '../src/soccer.ts'
 import { planTurn } from '../src/soccer-opponent.ts'
 
@@ -118,4 +118,26 @@ test('both budgets replay complete fixtures with a second-half change of ends', 
       assert.throws(() => resolveTurn(match, [[], []]), /match is over/)
     }
   }
+})
+
+test('timed through balls beat the high press while the compact defense holds shape', () => {
+  const match = createPressPractice()
+  const pass = order(match, '0-6', 'through', '0-9')
+  const run = order(match, '0-9', 'run', 1)
+  assert.ok(previewPass(match, pass, [run]).destination.x - previewPass(match, pass, []).destination.x > 10)
+  const pressure = planTurn(match, 1)
+  assert.ok(pressure.filter(order => order.kind === 'press').length >= 2)
+  const result = resolveTurn(match, [[pass, run], pressure])
+  assert.equal(result.match.holder, '0-9')
+  assert.ok(legalCommands(result.match, '0-9').some(command => command.kind === 'shoot'))
+  assert.ok(result.events.some(event => /in the lane/.test(event.text)))
+
+  const compact = createCrossingPractice()
+  const defense = planTurn(compact, 1)
+  assert.ok(defense.every(order => order.kind === 'hold'))
+  const cross = order(compact, '0-8', 'cross', '0-9')
+  const striker = order(compact, '0-9', 'run', 1)
+  const wide = resolveTurn(compact, [[cross, striker], defense])
+  assert.equal(wide.match.holder, '0-9')
+  assert.ok(wide.events.some(event => /with a cross/.test(event.text)))
 })

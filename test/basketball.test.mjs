@@ -103,3 +103,31 @@ test('serialized seeded matches replay identically through the final turn', () =
     assert.throws(() => resolveTurn(match, [[], []]), /match is over/)
   }
 })
+
+test('a drive can finish, or kick out when a shooter’s defender helps', () => {
+  const close = createMatch(2026)
+  athleteById(close, '0-0').position = { x: 25, y: 17 }
+  const finish = resolveTurn(close, [[command(close, '0-0', 'finish')], []])
+  assert.equal(finish.match.score[0], 2)
+  assert.ok(finish.events.some(event => event.kind === 'movement' && event.text.includes('drives')))
+
+  const match = createMatch(2026)
+  const attack = [command(match, '0-0', 'kickout', '0-1'), command(match, '0-4', 'screen')]
+  const help = resolveTurn(match, [attack, [command(match, '1-1', 'help')]])
+  const stay = resolveTurn(match, [attack, [command(match, '1-1', 'stay')]])
+  assert.equal(help.match.holder, '0-1')
+  assert.ok(help.events.some(event => /Park leaves Vale to help/.test(event.text)))
+  assert.ok(help.events.some(event => /kicks out to Vale for an open look/.test(event.text)))
+  assert.ok(stay.events.some(event => /shooter covered|intercepts/.test(event.text)))
+  const threeOrders = resolveTurn(match, [
+    [...attack, command(match, '0-1', 'catch-shoot')], [command(match, '1-1', 'help')],
+  ])
+  assert.ok(threeOrders.events.some(event => event.text === 'Vale catches and shoots.'))
+  assert.ok(threeOrders.events.some(event => /Vale (scores|misses)/.test(event.text)))
+
+
+  const switched = resolveTurn(match, [
+    [command(match, '0-0', 'drive'), command(match, '0-4', 'screen')], [command(match, '1-4', 'switch')],
+  ])
+  assert.ok(switched.events.some(event => /Grant switches onto Reed. Quinn picks up Okafor/.test(event.text)))
+})

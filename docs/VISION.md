@@ -81,6 +81,14 @@ Offside uses the positions at the start of the turn as the release snapshot. A r
 
 The seeded AI comparison uses the same 500 starting seeds for both budgets. Three commands remain the default for playtesting. In this prototype, the fourth command gave both teams more off-ball coverage and produced fewer shots. Goal creation and pacing still need human playtests. Both options are available in the browser build.
 
+## First club season playtest
+
+A club can play four fixtures in one sport or six fixtures over three weeks in both. Recruit one prospect, change starters and specialties, and spend one training session per week. Results and training add experience for the sport played. Awareness influences passing in both sports. Playing a second fixture in a week carries fatigue into the next starting lineup, so one athlete's value depends on who can cover for them. A completed season preserves results and points. The browser saves at each committed turn, and an exported file can restore the club and its current fixture. The save records plans with the rules version so the active match can be reconstructed.
+
+Quick matches and club rivals test explicit tactical responses. High-press soccer opponents commit players forward. Compact opponents keep their shape and narrow the middle. The two soccer drills exercise a through ball with a timed run and a cross to a central runner. The pass preview uses public positions, base defensive shape, and your queued run. The turn log reports the defenders that actually closed the lane after both plans were revealed. Basketball can resolve a finish at the rim or a kick-out with a queued catch-and-shoot. The defense can switch a screen, help on a drive, or stay with a shooter.
+
+The club season playtest succeeds when a player can change an attacking plan against a different defense, sign and develop an athlete, and finish and reload a season. Human tests can now compare whether fatigue, player specialties, and rival tactics lead to different lineup and match decisions.
+
 ## Engine and delivery
 
 Use a headless TypeScript rules module and a browser client that renders the engine's state and submits commands. Keep state serializable and avoid hidden time or platform dependencies. Given the same starting state, rules version, seed, and plans, outcomes and event logs must match. UI estimates, AI, and validation read the same state and legal action rules. AI starts from the public snapshot captured before either plan is resolved.
