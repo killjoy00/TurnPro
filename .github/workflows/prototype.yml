@@ -1,0 +1,32 @@
+name: Basketball prototype
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run smoke
+      - uses: actions/upload-artifact@v7
+        with:
+          name: turn-pro-basketball
+          path: dist/turn-pro.html
+          if-no-files-found: error

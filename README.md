@@ -19,4 +19,4 @@ npm run check
 npm run build
 ```
 
-The build writes `dist/turn-pro.html`. The engine and opponent logic run headlessly under `npm test`.
+The build writes `dist/turn-pro.html`. The engine and opponent logic run headlessly under `npm test`. Run `npm run simulate -- 1000` for a reproducible batch of AI matches. CI also opens the offline HTML in Chromium and exercises a full desktop match and mobile touch controls.
