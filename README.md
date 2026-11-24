@@ -9,7 +9,7 @@ The offline build includes 5-on-5 half-court basketball and 11-on-11 soccer, eac
 
 Download the `turn-pro-playtest` artifact from a successful build and open `turn-pro.html` in a browser.
 
-- **Club season** offers six mixed-sport fixtures or four in a single sport. Sign one prospect, set starters and specialties, unlock and equip a sport ability, and spend one training session each week. Take the same club and results into another season. The save keeps the season record, athlete progress, and the last committed turn. Export a save to move it between browsers or copies of the HTML.
+- **Club season** offers six mixed-sport fixtures or four in a single sport. Sign one prospect, set starters and specialties, unlock and equip a sport ability, and spend one training session each week. Climb the four-club table and qualify for a final. A mixed final has one basketball and one soccer fixture. Take the same club, titles, and rival records into another season. The save keeps the season record, athlete progress, and the last committed turn. Export a save to move it between browsers or copies of the HTML.
 - **Soccer quick match** offers a high press and compact defense, with guided **Beat the press** and **Practice a cross** setups. Read the pass preview after adding a run. Set **Next match orders** to four to compare it with the default three.
 - **Basketball quick match** offers three-order combinations. Give Reed **Drive and kick out to Vale**, Okafor **Set screen**, and Vale **Catch and shoot** on the same turn. Try a defense that helps in the paint or one that stays with shooters.
 

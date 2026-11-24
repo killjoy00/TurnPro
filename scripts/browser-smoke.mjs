@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
+import { createClub, schedule } from '../src/club.ts'
 
 const browser = await chromium.launch()
 const game = new URL('../dist/turn-pro.html', import.meta.url).href
@@ -130,7 +131,7 @@ try {
     await page.getByRole('button', { name: 'Back to club' }).click()
   }
   assert.match(await page.locator('.club-hero').innerText(), /Season complete/)
-  assert.equal(await page.locator('.schedule tbody tr').filter({ hasText: /Win|Draw|Loss/ }).count(), 6)
+  assert.equal(await page.locator('.fixture-schedule tbody tr').filter({ hasText: /Win|Draw|Loss/ }).count(), 6)
   const exportEvent = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export save' }).click()
   const exported = await exportEvent
@@ -143,7 +144,7 @@ try {
   assert.match(await page.locator('.club-hero').innerText(), /Season complete/)
   await page.locator('#club-import').setInputFiles(localSave)
   await page.getByRole('status').filter({ hasText: /Club save loaded/ }).waitFor()
-  assert.equal(await page.locator('.schedule tbody tr').filter({ hasText: /Win|Draw|Loss/ }).count(), 6)
+  assert.equal(await page.locator('.fixture-schedule tbody tr').filter({ hasText: /Win|Draw|Loss/ }).count(), 6)
   assert.deepEqual(errors, [])
 
   await page.getByRole('button', { name: 'Start another season' }).click()
@@ -155,6 +156,29 @@ try {
   await page.getByRole('combobox', { name: 'Soccer ability for Reed' }).selectOption('second-wind')
   await page.getByRole('button', { name: 'Play fixture' }).click()
   assert.match(await page.locator('.practice-ability').innerText(), /Thread the pass/)
+  assert.deepEqual(errors, [])
+
+  await page.getByRole('button', { name: 'Back to club' }).click()
+  const qualifier = createClub('both')
+  qualifier.results = schedule('both').map(() => [2, 0])
+  qualifier.league.otherResults = schedule('both').map(() => [0, 0])
+  await page.locator('#club-import').setInputFiles({
+    name: 'qualified-club.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(qualifier)),
+  })
+  await page.getByRole('status').filter({ hasText: /Club save loaded/ }).waitFor()
+  assert.match(await page.locator('.league-table .own-club').innerText(), /Comets/)
+  assert.match(await page.locator('.club-hero').innerText(), /Club final · Basketball/)
+  await page.getByText('Around the league', { exact: true }).click()
+  assert.equal(await page.locator('.other-fixtures li').count(), 6)
+  for (const limit of [12, 18]) {
+    await page.getByRole('button', { name: 'Play fixture' }).click()
+    for (let turn = 1; turn <= limit; turn++) await page.getByRole('button', { name: 'Commit turn' }).click()
+    await page.getByRole('button', { name: 'Back to club' }).click()
+  }
+  assert.match(await page.locator('.league-outcome').innerText(), /Champion|Runner-up/)
+  assert.equal(await page.locator('.fixture-schedule tbody tr').count(), 8)
+  await page.getByText('Rival records', { exact: true }).click()
+  assert.match(await page.locator('.rival-records[open]').innerText(), /Forge/)
   assert.deepEqual(errors, [])
 
   const mobile = await browser.newPage({
@@ -178,7 +202,7 @@ try {
   await mobile.getByRole('button', { name: 'Soccer · 4 fixtures' }).tap()
   assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth), 390)
   assert.match(await mobile.locator('.club-hero').innerText(), /Soccer vs Forge/)
-  console.log('Both sports, tactical drills, the six-fixture club season, saved match resume, export/import, and mobile touch passed.')
+  console.log('Both sports, tactical drills, the club league and final, saved match resume, export/import, and mobile touch passed.')
 } finally {
   await browser.close()
 }

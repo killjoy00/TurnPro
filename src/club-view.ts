@@ -1,11 +1,12 @@
 import {
-  availableProspects, clubAthlete, createClub, development, nextFixture, nextSeason, profile, ratings, ROLES, schedule,
+  availableProspects, clubAthlete, createClub, development, nextFixture, nextSeason, profile, ratings, ROLES,
   SPECIALTIES, TECHNIQUES, unlocked, unlockRequirement,
   type Club, type SeasonMode, type Specialty, type Sport,
 } from './club.ts'
 import { DEFENSE_NAMES } from './opponent.ts'
 import { SHAPE_NAMES } from './soccer.ts'
 import type { Technique } from './match.ts'
+import { leagueTable, rivalPair, rivalryRecords, RIVALS, schedule, seasonOutcome, seasonSchedule, type SeasonRecord } from './league.ts'
 
 export interface ClubView {
   getClub(): Club | null
@@ -21,6 +22,7 @@ export interface ClubView {
 }
 
 const SPORT: Record<Sport, string> = { basketball: 'Basketball', soccer: 'Soccer' }
+const seasonOutcomeByIndex = (record: SeasonRecord, index: number) => seasonOutcome(record, index + 1)
 
 export function mountClub(container: HTMLElement, controller: ClubView, signal: AbortSignal) {
   let lineupSport: Sport = controller.getClub()?.mode === 'soccer' ? 'soccer' : 'basketball'
@@ -48,16 +50,23 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
 
     const player = clubAthlete(club, athlete)
     const info = profile(athlete)
-    const scheduleRows = schedule(club.mode).map((game, index) => {
+    const regular = schedule(club.mode)
+    const scheduleRows = seasonSchedule(club, club.season).map((game, index) => {
       const score = club.results[index]
       const active = index === club.results.length
       const result = score ? `${score[0]}–${score[1]} · ${score[0] === score[1] ? 'Draw' : score[0] > score[1] ? 'Win' : 'Loss'}`
         : active ? (club.pending ? 'In progress' : 'Up next') : 'Scheduled'
-      return `<tr ${active ? 'class="up-next"' : ''}><td>${game.week}</td><td>${SPORT[game.sport]}</td><td>${game.rival}</td><td>${result}</td></tr>`
+      return `<tr ${active ? 'class="up-next"' : ''}><td>${game.stage === 'final' ? 'Final' : game.week}</td><td>${SPORT[game.sport]}</td><td>${game.rival}</td><td>${result}</td></tr>`
     }).join('')
-    const wins = club.results.filter(([a, b]) => a > b).length
-    const draws = club.results.filter(([a, b]) => a === b).length
-    const losses = club.results.length - wins - draws
+    const regularResults = club.results.slice(0, regular.length)
+    const wins = regularResults.filter(([a, b]) => a > b).length
+    const draws = regularResults.filter(([a, b]) => a === b).length
+    const losses = regularResults.length - wins - draws
+    const outcome = seasonOutcome(club, club.season)
+    const standings = club.league && leagueTable(club, club.season)
+    const rank = (standings ? standings.findIndex(row => row.team === 'Comets') : -1) + 1
+    const completed = [...club.history.map(seasonOutcomeByIndex), outcome]
+    const titles = completed.filter(result => result === 'Champion').length
     const editable = fixture && !club.pending
     const canTrain = editable && club.trainedWeek !== fixture.week
     const allowedSports = club.mode === 'both' ? (['basketball', 'soccer'] as const) : [club.mode]
@@ -98,24 +107,47 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         `<div><b>${entry.name}</b><p>Awareness ${entry.awareness} · Basketball ${entry.basketball} · Soccer ${entry.soccer}${entry.keeper ? ' · Goalkeeper' : ''}</p>
         <button data-recruit="${entry.id}">Sign ${entry.name}</button></div>`).join('')}</div></section>` : ''
     const headline = fixture
-      ? `Week ${fixture.week} · ${SPORT[fixture.sport]} vs ${fixture.rival}` : 'Season complete'
+      ? `${fixture.stage === 'final' ? 'Club final' : `Week ${fixture.week}`} · ${SPORT[fixture.sport]} vs ${fixture.rival}`
+      : 'Season complete'
     const opponent = fixture && (fixture.sport === 'soccer' ? SHAPE_NAMES[fixture.soccer] : DEFENSE_NAMES[fixture.basketball])
 
+    const leaguePanel = standings ? `<section class="club-panel"><h3>League standings</h3>
+      <p class="muted league-rule">Top two reach the final. Ties in the final favor the higher seed.</p>
+      <div class="schedule-scroll"><table class="schedule league-table">
+        <thead><tr><th scope="col">Rank</th><th scope="col">Club</th><th scope="col" title="Played">P</th>
+        <th scope="col" title="Wins">W</th><th scope="col" title="Draws">D</th><th scope="col" title="Losses">L</th><th scope="col">Pts</th></tr></thead>
+        <tbody>${standings.map((row, index) => `<tr class="${row.team === 'Comets' ? 'own-club' : ''}">
+          <td>${index + 1}</td><th scope="row">${row.team}</th><td>${row.played}</td><td>${row.wins}</td>
+          <td>${row.draws}</td><td>${row.losses}</td><td>${row.points}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <p class="muted league-rule">Ranked by points, wins, head-to-head points, then preseason order.</p>
+      ${club.league?.otherResults.length ? `<details class="other-fixtures"><summary>Around the league</summary><ul>${club.league.otherResults.map((score, index) => {
+        const [home, away] = rivalPair(regular[index])
+        return `<li>Week ${regular[index].week} · ${SPORT[regular[index].sport]} · ${home} ${score.join('–')} ${away}</li>`
+      }).join('')}</ul></details>` : ''}
+      </section>` : ''
+    const rivalRows = rivalryRecords([...club.history, club]).map(row => {
+      const rival = RIVALS.find(entry => entry.rival === row.rival)!
+      return `<tr><th scope="row">${rival.rival}</th><td>${DEFENSE_NAMES[rival.basketball]}</td><td>${SHAPE_NAMES[rival.soccer]}</td>
+        <td>${row.wins}–${row.draws}–${row.losses}</td></tr>`
+    }).join('')
     const past = club.history.map(({ mode, results }, index) => {
       const record = results.map(([a, b]) => a > b ? 'W' : a === b ? 'D' : 'L').join('–')
-      return `<li>Season ${index + 1} · ${mode === 'both' ? 'Both sports' : SPORT[mode]} · ${record}</li>`
+      return `<li>Season ${index + 1} · ${mode === 'both' ? 'Both sports' : SPORT[mode]} · ${record} · ${completed[index]}</li>`
     }).join('')
     container.innerHTML = `<section class="club-hero"><h2>Comets club</h2>
       <p><b>Season ${club.season} · ${headline}</b>${opponent ? ` · ${opponent}` : ''}</p>
-      <p class="season-record">${wins} wins · ${draws} draws · ${losses} losses · ${wins * 3 + draws} season points</p>
+      ${outcome && outcome !== 'Finished' ? `<p class="league-outcome"><b>${outcome}</b>${rank ? ` · League rank ${rank}` : ''}</p>` : ''}
+      <p class="season-record">${wins} wins · ${draws} draws · ${losses} losses · ${wins * 3 + draws} league points${titles ? ` · ${titles} ${titles === 1 ? 'title' : 'titles'}` : ''}</p>
       <div class="club-actions">${fixture ? `<button class="primary" data-action="play">${club.pending ? 'Resume fixture' : 'Play fixture'}</button>`
         : '<button data-action="new">Start another season</button>'}</div>
     </section>
     <p class="club-status" role="status">${message}</p>
     <div class="club-grid">
       <section class="club-panel"><h3>Schedule</h3><div class="schedule-scroll">
-        <table class="schedule"><thead><tr><th scope="col">Week</th><th scope="col">Sport</th><th scope="col">Rival</th><th scope="col">Result</th></tr></thead><tbody>${scheduleRows}</tbody></table>
+        <table class="schedule fixture-schedule"><thead><tr><th scope="col">Week</th><th scope="col">Sport</th><th scope="col">Rival</th><th scope="col">Result</th></tr></thead><tbody>${scheduleRows}</tbody></table>
       </div></section>
+      ${leaguePanel}
       <section class="club-panel"><h3>Starting lineup</h3><div class="club-actions">
         ${allowedSports.map(sport => `<button data-lineup="${sport}" aria-pressed="${lineupSport === sport}">${SPORT[sport]}</button>`).join('')}
       </div><div class="lineup-options">${lineup}</div></section>
@@ -128,7 +160,10 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         ${editable ? `<p class="muted">${canTrain ? 'One training session available this week.' : 'Training used this week.'}</p>
         <div class="club-actions">${allowedSports.map(sport => `<button data-train="${sport}" ${canTrain ? '' : 'disabled'}>Train ${SPORT[sport]}</button>`).join('')}</div>` : ''}
       </section>
-    </div>${sign}${past ? `<details class="club-panel past-seasons"><summary>Past seasons</summary><ol>${past}</ol></details>` : ''}
+    </div>${sign}<details class="club-panel rival-records"><summary>Rival records</summary>
+      <div class="schedule-scroll"><table class="schedule"><thead><tr><th scope="col">Club</th>
+        <th scope="col">Basketball defense</th><th scope="col">Soccer defense</th><th scope="col">W–D–L</th>
+      </tr></thead><tbody>${rivalRows}</tbody></table></div></details>${past ? `<details class="club-panel past-seasons"><summary>Past seasons</summary><ol>${past}</ol></details>` : ''}
     ${saveControls(true)}`
   }
 

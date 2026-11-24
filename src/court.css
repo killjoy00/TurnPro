@@ -255,8 +255,15 @@ body.controller-active :focus { outline: 3px solid var(--lime); outline-offset: 
 .practice-checklist { padding: 8px 15px; color: var(--lime); font-size: .83rem; border-bottom: 1px solid var(--line); }
 .practice-checklist ol { margin: 0; padding-left: 16px; }
 .practice-checklist li + li { margin-top: 4px; }
-.past-seasons { margin-top: 12px; }
+.past-seasons, .rival-records { margin-top: 12px; }
 @media (max-width: 820px) {
   .topbar-inner { gap: 7px 10px; flex-wrap: wrap; padding-block: 5px; }
 }
 .practice-ability { color: var(--home); font-size: .78rem; padding-top: 6px; }
+
+.league-rule { margin: 6px 0 9px; font-size: .8rem; }
+.league-table .own-club { background: #213b35; color: var(--home); }
+.league-table tbody th { color: inherit; font-weight: 600; }
+.league-outcome { color: var(--lime); }
+.other-fixtures { margin-top: 8px; font-size: .82rem; color: var(--muted); }
+.other-fixtures summary, .past-seasons summary, .rival-records summary { cursor: pointer; }
