@@ -4,20 +4,22 @@ Turn Pro is a turn-based tactical sports RPG built around full teams, simultaneo
 
 - [Game vision and release gates](docs/VISION.md)
 - [Build and test runs](https://github.com/killjoy00/TurnPro/actions/workflows/prototype.yml)
+- [Steam launch candidate and depot preview](docs/STEAM-PREVIEW.md)
 
-The offline build includes 5-on-5 half-court basketball and 11-on-11 soccer, each against the computer. Choose a sport at the top, give a few athletes orders, then commit to reveal and resolve both plans. Basketball runs for 12 turns. Soccer runs for two nine-turn halves.
+Choose a sport at the top, give a few athletes orders, then commit to reveal and resolve both plans. Play 5-on-5 half-court basketball over 12 turns and 11-on-11 soccer over two nine-turn halves. The playtest edition also offers 6-on-6 ice hockey over three six-turn periods.
 
-Download the `turn-pro-playtest` artifact from a successful build and open `turn-pro.html` in a browser.
+Download `turn-pro-playtest` from a successful build and open `turn-pro.html` in a browser. For the two-sport launch candidate, use `turn-pro-launch-browser` and open `turn-pro-launch.html`.
 
 - **Club season** offers six mixed-sport fixtures or four in a single sport. Sign one prospect, set starters and specialties, unlock and equip a sport ability, and spend one training session each week. Climb the four-club table and qualify for a final. A mixed final has one basketball and one soccer fixture. Take the same club, titles, and rival records into another season. The save keeps the season record, athlete progress, and the last committed turn. Export a save to move it between browsers or copies of the HTML.
 - **Soccer quick match** offers a high press and compact defense, with guided **Beat the press** and **Practice a cross** setups. Read the pass preview after adding a run. Set **Next match orders** to four to compare it with the default three.
 - **Basketball quick match** offers three-order combinations. Give Reed **Drive and kick out to Vale**, Okafor **Set screen**, and Vale **Catch and shoot** on the same turn. Try a defense that helps in the paint or one that stays with shooters.
+- **Ice hockey quick match** lets you carry the puck, forecheck, manage stamina with line changes, and test screens and one-timers. Start with **Practice a screened one-timer**. To change lines, select the goalie when the opponent has the puck. The change uses an order and brings on five rested skaters. Hockey is currently an exhibition against the AI. Club seasons use basketball and soccer.
 
 ## Desktop playtest
 
-Download the Windows x64 or Linux x64 artifact from a passing run. Extract the entire archive, then launch `TurnPro.exe` on Windows or `TurnPro` on Linux. The Linux package uses a tar archive to preserve executable permissions. Use the standalone HTML on other platforms.
+Download `turn-pro-windows-x64` or `turn-pro-linux-x64` from a passing run for the full playtest. The two-sport candidate artifacts are `turn-pro-launch-windows-x64` and `turn-pro-launch-linux-x64`. Extract the entire archive, then launch `TurnPro.exe` on Windows or `TurnPro` on Linux. The Linux package uses a tar archive to preserve executable permissions. Use the standalone HTML on other platforms.
 
-Open **How to play** for guided basketball and soccer combinations. A standard-mapped controller can move focus with its directional pad or left stick. **Controls** shows and remaps the buttons for selecting, going back, moving between lineup and orders, and committing. Browser saves can move to the desktop version through the club screen’s export and import buttons.
+Open **How to play** for guided combinations. A standard-mapped controller can move focus with its directional pad or left stick. **Controls** offers button remapping, adjustable text size, and a high-contrast option. Browser saves can move to the desktop version through the club screen’s export and import buttons.
 
 ## Development
 
@@ -27,6 +29,7 @@ Use Node.js 24 or later. On a 64-bit Windows or Linux host, `npm run desktop:pac
 npm ci
 npm run check
 npm run build
+npm run build:launch
 ```
 
-The build writes `dist/turn-pro.html`. The engine and opponent logic run headlessly under `npm test`. Run `npm run simulate -- 1000` for basketball and `npm run simulate:soccer -- 500` to compare the two soccer budgets on 500 seeds each. CI opens the offline HTML in Chromium and checks both quick matches, the soccer drills, a full mixed season, reload and import/export, simulated controller input, and mobile touch controls. Desktop CI launches both platform packages and verifies a club fixture survives a full app restart.
+The builds write `dist/turn-pro.html` and `dist/turn-pro-launch.html`. The engine and opponent logic run headlessly under `npm test`. Run `npm run simulate -- 1000` for basketball and `npm run simulate:soccer -- 500` to compare the two soccer budgets on 500 seeds each. Browser CI checks quick matches, guided plays, a full mixed season, save restoration, controller navigation, mobile touch controls, and launch display settings at 1280×800. Desktop CI launches both editions on Windows and Linux and verifies a club fixture survives a full app restart.

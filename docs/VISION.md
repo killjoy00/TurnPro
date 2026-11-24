@@ -107,7 +107,7 @@ A season records the final outcome and results against each rival. The next seas
 
 Use a headless TypeScript rules module and a browser client that renders the engine's state and submits commands. Keep state serializable and avoid hidden time or platform dependencies. Given the same starting state, rules version, seed, and plans, outcomes and event logs must match. UI estimates, AI, and validation read the same state and legal action rules. AI starts from the public snapshot captured before either plan is resolved.
 
-The first module owns the basketball surface, basketball actions, constraints, scoring, control changes, and role defaults. Both prototypes share command validation, plan reveal, event formatting, the browser planning controls, geometry helpers, and seeded randomness. Each sport owns its legal actions, formation and default movement, resolution, AI, match timing, and playing surface. Hockey and football can adopt proven interfaces while keeping line changes and snap-based plays in their own rules.
+Basketball, soccer, and hockey share command validation, plan reveal, event formatting, browser planning controls, geometry helpers, and seeded randomness. Each sport owns its legal actions, formations, default movement, resolution, AI, match timing, and playing surface. Hockey keeps line changes in its own rules. Football can reuse the planning interface while keeping snaps and play progression in its rules.
 
 Keep an original 2D sporting presentation with clear athlete labels, control focus, visible possession, outcome feedback, and readable small-screen layouts. Mouse, keyboard, and touch are appropriate for early browser playtests. Gamepad navigation, remapping, and Steam Deck verification are commercial readiness gates. Offline single-player and versioned local saves should precede desktop packaging. Choose packaging after browser playtests and Steam Deck checks justify it.
 
@@ -123,6 +123,10 @@ Use CI to compile, run tests, and produce a downloadable browser build. Start wi
 | 4. Athlete and club RPG | Show an athlete carrying a transferable strength between basketball and soccer while improving each sport's skills independently. Run a short career with recruitment, training, rivals, and meaningful roster choices. |
 | 5. Paid Steam release | Ship both basketball and soccer, a complete solo loop, readable onboarding, local saves, gamepad support, Steam Deck verification, and a release-quality build. |
 | 6. Expansion | Sequence hockey, American football, online competitive play, and mobile delivery according to evidence and capacity. |
+
+The [two-sport Steam launch candidate](STEAM-PREVIEW.md) contains the basketball and soccer career, guided practice, persistent display options, and separately packaged Windows and Linux versions. The candidate uses the existing local save format. Physical Steam Deck testing and Steamworks review are commercial release gates.
+
+Hockey is the first expansion playtest. It uses five skaters and a goalie per side, plus a second line that recovers on the bench. The first exhibition tests whether players can recognize a screen, time a one-timer, counter a forecheck, and spend an order on a line change. Evaluate how often attacks create useful shot options and how clearly the game communicates turnovers and tiring lines before adding hockey to career progression. The first paid release still requires basketball and soccer.
 
 Turn Pro is planned as a premium game. Additional sports, campaigns, and cosmetics are possible later. Commercial decisions should protect the core play loop and the fairness of competitive modes.
 

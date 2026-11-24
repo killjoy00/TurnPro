@@ -5,7 +5,8 @@ import { join, resolve } from 'node:path'
 import { _electron as electron } from 'playwright'
 
 const profile = await mkdtemp(join(tmpdir(), 'turn-pro-profile-'))
-const executablePath = resolve('release', `TurnPro-${process.platform}-x64`,
+const launch = process.argv.includes('--launch')
+const executablePath = resolve(launch ? 'release/launch' : 'release', `TurnPro-${process.platform}-x64`,
   process.platform === 'win32' ? 'TurnPro.exe' : 'TurnPro')
 const args = [`--user-data-dir=${profile}`]
 let app
@@ -13,6 +14,9 @@ try {
   app = await electron.launch({ executablePath, args })
   let page = await app.firstWindow()
   await page.waitForURL('turnpro://game/index.html')
+  const sports = page.locator('#sport option')
+  assert.deepEqual(await sports.evaluateAll(options => options.map(option => option.value)),
+    launch ? ['basketball', 'soccer'] : ['basketball', 'soccer', 'hockey'])
   assert.equal(await page.evaluate(() => typeof globalThis.require), 'undefined')
   await page.getByRole('button', { name: 'Club season' }).click()
   await page.getByRole('button', { name: 'Both sports · 6 fixtures' }).click()

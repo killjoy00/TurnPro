@@ -1,14 +1,19 @@
 import * as basketball from './basketball.ts'
 import * as soccer from './soccer.ts'
+import * as hockey from './hockey.ts'
+import { planTurn as hockeyAI } from './hockey-opponent.ts'
 import { mountGame, type SportView } from './game-view.ts'
 import { DEFENSE_NAMES, planTurn as basketballAI, type DefenseStyle } from './opponent.ts'
 import { planTurn as soccerAI } from './soccer-opponent.ts'
-import { drawBasketball, drawSoccer } from './surfaces.ts'
+import { drawBasketball, drawHockey, drawSoccer } from './surfaces.ts'
 import { equip, readClub, recruit, setStarter, specialize, train, type Club } from './club.ts'
 import { beginClubFixture, openClubFixture, saveClubTurn } from './club-fixture.ts'
 import { mountClub } from './club-view.ts'
 import type { MatchSnapshot, PlanCommand } from './match.ts'
 import { installGamepad } from './gamepad.ts'
+import { installDisplaySettings } from './display-settings.ts'
+
+declare const TURN_PRO_HOCKEY: boolean
 
 const basketballView: SportView<basketball.Match, basketball.Command> = {
   id: 'basketball',
@@ -112,6 +117,55 @@ const soccerView: SportView<soccer.Match, soccer.Command> = {
   },
 }
 
+function mountHockey(signal: AbortSignal) {
+  const hockeyView: SportView<hockey.Match, hockey.Command> = {
+    id: 'hockey',
+    surfaceName: 'Ice rink',
+    intro: 'Advance the puck, set up a one-timer, or call in fresh skaters from your goalie’s order list.',
+    width: hockey.RINK.width,
+    height: hockey.RINK.height,
+    turnLimit: hockey.TURN_LIMIT,
+    create: seed => hockey.createMatch(seed),
+    limit: () => 3,
+    practices: [{
+      name: 'Practice a screened one-timer',
+      intro: 'Pass to Vale while Okafor screens the goalie. Ready Vale’s shot on the same turn.',
+      create: hockey.createRushPractice,
+      steps: [
+        { label: 'Reed · Pass to Vale', athlete: '0-0', kind: 'pass', target: '0-1' },
+        { label: 'Vale · Ready one-timer', athlete: '0-1', kind: 'one-timer' },
+        { label: 'Okafor · Screen the goalie', athlete: '0-2', kind: 'screen' },
+      ],
+    }],
+    legalCommands: hockey.legalCommands,
+    label: hockey.commandLabel,
+    stamina: order => hockey.ACTIONS[order.kind].stamina,
+    preview(match, order) {
+      const athlete = hockey.athleteById(match, order.athlete)
+      if (order.kind === 'change') return `${hockey.reserveStamina(match, athlete.team)}% line stamina · `
+      if (order.kind === 'shoot' || order.kind === 'one-timer') {
+        const shot = hockey.shotEstimate(match, athlete, false, order.kind === 'one-timer')
+        return `~${shot.goal}% goal now · `
+      }
+      return ''
+    },
+    noOrders: athlete => athlete.role === 'GK' ? 'The goalie tracks the puck and handles saves automatically.'
+      : 'Recover stamina on base assignments this turn.',
+    previewTarget: hockey.commandTarget,
+    opponent: hockeyAI,
+    resolveTurn: hockey.resolveTurn,
+    draw: drawHockey,
+    opponentDetail: match => `Line ${match.lines[1] + 1}`,
+    lineupDetail: match => `On ice · Line ${match.lines[0] + 1} · Reserve ${hockey.reserveStamina(match, 0)}% stamina`,
+    clockDetail(match, portrait) {
+      const forwards = hockey.direction(match, 0) === 1
+      const attack = portrait ? (forwards ? 'up' : 'down') : (forwards ? 'right' : 'left')
+      return `Period ${hockey.period(match)} · Attack ${attack}`
+    },
+  }
+  mountGame(hockeyView, signal)
+}
+
 const selector = document.getElementById('sport') as HTMLSelectElement
 const defense = document.getElementById('defense') as HTMLSelectElement
 const clubNav = document.getElementById('club-nav') as HTMLButtonElement
@@ -181,7 +235,10 @@ function showQuick(resetDefense: boolean) {
     const options = selector.value === 'soccer' ? soccer.SHAPE_NAMES : DEFENSE_NAMES
     defense.replaceChildren(...Object.entries(options).map(([value, label]) => new Option(label, value)))
   }
-  if (selector.value === 'soccer') mountGame(soccerView, route.signal)
+  if (TURN_PRO_HOCKEY && selector.value === 'hockey') {
+    document.getElementById('quick-defense')!.hidden = true
+    mountHockey(route.signal)
+  } else if (selector.value === 'soccer') mountGame(soccerView, route.signal)
   else mountGame(basketballDefense(defense.value as DefenseStyle), route.signal)
 }
 
@@ -246,4 +303,5 @@ learn.addEventListener('click', event => {
   }
 })
 
+installDisplaySettings()
 installGamepad()
