@@ -1,10 +1,15 @@
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
 
-export type Team = 0 | 1
-export const TEAMS = ['Comets', 'Forge'] as const
+import {
+  COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, TEAMS, validatePlans,
+  type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type Team,
+} from './match.ts'
+
+export { COMMAND_LIMIT, otherTeam, TEAMS } from './match.ts'
+export type { Team, TurnEvent } from './match.ts'
+
 export const COURT = { width: 50, length: 47, hoop: { x: 25, y: 5 }, arc: 23.75 }
 export const RULES_VERSION = 1
-export const COMMAND_LIMIT = 3
 export const TURN_LIMIT = 12
 export const LANDMARKS = [
   { name: 'Left wing', x: 7, y: 17 },
@@ -12,28 +17,17 @@ export const LANDMARKS = [
   { name: 'Right wing', x: 43, y: 17 },
 ] as const
 
-export interface Athlete {
-  id: string
-  team: Team
-  number: string
-  name: string
-  role: string
-  position: Point
+export interface Athlete extends AthleteSnapshot {
   home: Point
-  stamina: number
   speed: number
   strength: number
   passing: number
   shooting: number
 }
 
-export interface Match {
+export interface Match extends MatchSnapshot {
   rulesVersion: number
-  turn: number
-  seed: number
   randomState: number
-  holder: string
-  score: [number, number]
   athletes: Athlete[]
 }
 
@@ -42,12 +36,6 @@ export type Command =
   | { athlete: string; kind: 'pass'; target: string }
   | { athlete: string; kind: 'mark' | 'deny'; target: string }
   | { athlete: string; kind: 'cut'; target: number }
-
-type EventKind = 'plan' | 'movement' | 'ball' | 'score' | 'possession' | 'turnover' | 'finish'
-
-export type TurnEvent =
-  | { kind: EventKind; text: string }
-  | { kind: 'rebound'; text: string; offensive: boolean }
 
 export const ACTIONS = {
   pass: { label: 'Pass', stamina: 6 },
@@ -85,14 +73,8 @@ const ROSTERS = [
   ],
 ] as const
 
-export function otherTeam(team: Team): Team {
-  return team === 0 ? 1 : 0
-}
-
 export function athleteById(match: Match, id: string): Athlete {
-  const athlete = match.athletes.find(candidate => candidate.id === id)
-  if (!athlete) throw new Error('Unknown athlete.')
-  return athlete
+  return findAthlete(match.athletes, id)
 }
 
 function setupPossession(match: Match, team: Team) {
@@ -153,24 +135,6 @@ export function legalCommands(match: Match, id: string): Command[] {
     }
   }
   return commands.filter(command => ACTIONS[command.kind].stamina <= athlete.stamina)
-}
-
-function sameCommand(a: Command, b: Command): boolean {
-  return a.athlete === b.athlete && a.kind === b.kind
-    && ('target' in a ? 'target' in b && a.target === b.target : !('target' in b))
-}
-
-function validatePlan(match: Match, team: Team, plan: readonly Command[]) {
-  if (plan.length > COMMAND_LIMIT) throw new Error('A plan can use up to three commands.')
-  const used = new Set<string>()
-  for (const command of plan) {
-    if (used.has(command.athlete)) throw new Error('An athlete can take one command per turn.')
-    const athlete = athleteById(match, command.athlete)
-    if (athlete.team !== team || !legalCommands(match, athlete.id).some(legal => sameCommand(legal, command))) {
-      throw new Error('That command is unavailable in this position.')
-    }
-    used.add(command.athlete)
-  }
 }
 
 export function commandLabel(match: Match, command: Command): string {
@@ -263,27 +227,20 @@ function assignment(match: Match, athlete: Athlete, command: Command | undefined
   return athlete.home
 }
 
-export function resolveTurn(match: Match, plans: readonly [readonly Command[], readonly Command[]]) {
+export function resolveTurn(match: Match, plans: Plans<Command>) {
   if (match.rulesVersion !== RULES_VERSION) throw new Error('Unsupported rules version.')
   if (finished(match)) throw new Error('This match is over.')
-  validatePlan(match, 0, plans[0])
-  validatePlan(match, 1, plans[1])
+  validatePlans(match, plans, COMMAND_LIMIT, legalCommands)
 
   const next = structuredClone(match)
   const random = seededRandom(match.randomState)
-  const events: TurnEvent[] = []
+  const events = revealPlans(match, plans, commandLabel)
   const emit = (kind: EventKind, text: string) => events.push({ kind, text })
   const offense = possessionTeam(match)
   const defense = otherTeam(offense)
   const holder = athleteById(next, match.holder)
   const commands = new Map(plans.flat().map(command => [command.athlete, command]))
   const screened = new Set<string>()
-
-  for (const team of [0, 1] as const) {
-    const descriptions = plans[team].map(command =>
-      `${athleteById(match, command.athlete).name} · ${commandLabel(match, command)}`)
-    emit('plan', `${TEAMS[team]}: ${descriptions.join(' / ') || 'Base assignments'}`)
-  }
 
   const ordered = [...next.athletes].sort((a, b) =>
     reach(b) - reach(a) || Number(b.team === (match.turn % 2)) - Number(a.team === (match.turn % 2))
@@ -402,9 +359,7 @@ export function resolveTurn(match: Match, plans: readonly [readonly Command[], r
   next.randomState = random.state
   next.turn += 1
   if (finished(next)) {
-    const [home, away] = next.score
-    emit('finish', home === away ? `Final score: ${home}–${away}. Draw.`
-      : `Final score: ${home}–${away}. ${TEAMS[home > away ? 0 : 1]} win.`)
+    emit('finish', finalScore(next.score))
   }
   return { match: next, events }
 }

@@ -68,11 +68,24 @@ A first playtest should include these situations:
 
 Measure first-turn completion, match completion time, scoring and turnover rates, command use, opening-possession bias, and how often a player can explain the last outcome. Simulation can flag likely balance problems. Human playtests determine whether choices are clear and interesting.
 
+## Soccer prototype
+
+The first soccer build puts two 4-3-3 lineups on a full pitch. Each side commits up to three orders from the same public state. The attack can carry, pass, play a through ball, cross, shoot, or send a teammate into a channel. The defense can press or hold its line. Uncommanded players shift with the ball, and goalkeepers track it and attempt saves automatically. Turnovers preserve the on-field positions. Goals restart at midfield, and teams switch ends after nine turns.
+
+Offside uses the positions at the start of the turn as the release snapshot. A runner who starts onside can move into space before the pass arrives. **Practice a cross** sets up a winger and striker to demonstrate this timing. Try it before a full match to learn how the turn log reports movement and ball outcomes.
+
+| Commands per side | Matches | Goals | Shots | Scoreless |
+| --- | ---: | ---: | ---: | ---: |
+| 3 | 500 | 308 | 1,311 | 242 |
+| 4 | 500 | 265 | 1,134 | 265 |
+
+The seeded AI comparison uses the same 500 starting seeds for both budgets. Three commands remain the default for playtesting. In this prototype, the fourth command gave both teams more off-ball coverage and produced fewer shots. Goal creation and pacing still need human playtests. Both options are available in the browser build.
+
 ## Engine and delivery
 
 Use a headless TypeScript rules module and a browser client that renders the engine's state and submits commands. Keep state serializable and avoid hidden time or platform dependencies. Given the same starting state, rules version, seed, and plans, outcomes and event logs must match. UI estimates, AI, and validation read the same state and legal action rules. AI starts from the public snapshot captured before either plan is resolved.
 
-The first module owns the basketball surface, basketball actions, constraints, scoring, control changes, and role defaults. The shared code starts with small math and randomness functions. Let soccer reveal which boundaries should become shared interfaces for rules, actions, events, and AI. Hockey and football can adopt proven interfaces while keeping line changes and snap-based plays in their own rules.
+The first module owns the basketball surface, basketball actions, constraints, scoring, control changes, and role defaults. Both prototypes share command validation, plan reveal, event formatting, the browser planning controls, geometry helpers, and seeded randomness. Each sport owns its legal actions, formation and default movement, resolution, AI, match timing, and playing surface. Hockey and football can adopt proven interfaces while keeping line changes and snap-based plays in their own rules.
 
 Keep an original 2D sporting presentation with clear athlete labels, control focus, visible possession, outcome feedback, and readable small-screen layouts. Mouse, keyboard, and touch are appropriate for early browser playtests. Gamepad navigation, remapping, and Steam Deck verification are commercial readiness gates. Offline single-player and versioned local saves should precede desktop packaging. Choose packaging after browser playtests and Steam Deck checks justify it.
 

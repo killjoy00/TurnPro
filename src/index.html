@@ -3,14 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Turn Pro · Basketball</title>
+  <title>Turn Pro</title>
   <!-- styles -->
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
       <h1>TURN <em>PRO</em></h1>
-      <span class="mode">Basketball <span>5-on-5</span></span>
+      <select id="sport" class="sport-select" aria-label="Sport">
+        <option value="basketball">Basketball · 5-on-5</option>
+        <option value="soccer">Soccer · 11-on-11</option>
+      </select>
       <button id="restart" class="restart" type="button">New match</button>
     </div>
   </header>
@@ -33,6 +36,14 @@
         <div class="section-bar">
           <h2 id="plan-title">Your plan</h2>
           <span id="budget" class="budget"></span>
+        </div>
+        <div class="budget-preset" id="budget-preset" hidden>
+          <label for="budget-mode">Next match orders</label>
+          <select id="budget-mode" aria-label="Orders per side in the next soccer match">
+            <option value="3">3</option>
+            <option value="4">4</option>
+          </select>
+          <button id="practice" type="button">Practice a cross</button>
         </div>
         <div id="orders" class="orders" aria-label="Queued commands"></div>
         <div id="actions" class="actions"></div>
