@@ -1,9 +1,11 @@
 import {
-  clubAthlete, createClub, development, nextFixture, profile, PROSPECTS, ratings, ROLES, schedule, SPECIALTIES,
+  availableProspects, clubAthlete, createClub, development, nextFixture, nextSeason, profile, ratings, ROLES, schedule,
+  SPECIALTIES, TECHNIQUES, unlocked, unlockRequirement,
   type Club, type SeasonMode, type Specialty, type Sport,
 } from './club.ts'
 import { DEFENSE_NAMES } from './opponent.ts'
 import { SHAPE_NAMES } from './soccer.ts'
+import type { Technique } from './match.ts'
 
 export interface ClubView {
   getClub(): Club | null
@@ -12,6 +14,7 @@ export interface ClubView {
   recruit(id: string): void
   train(id: string, sport: Sport): void
   specialize(id: string, choice: Specialty): void
+  equip(id: string, sport: Sport, technique: Technique | null): void
   changeStarter(sport: Sport, slot: number, id: string): void
   exportSave(): void
   importSave(file: File): Promise<void>
@@ -31,7 +34,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     if (!club || choosingSeason) {
       container.innerHTML = `<section class="club-hero">
         <h2>Comets club</h2>
-        <p>Choose a schedule for your solo season.</p>
+        <p>${club ? 'Choose a schedule for the next season with your existing club.' : 'Choose a schedule for your solo season.'}</p>
         <div class="club-actions">
           <button data-season="both">Both sports · 6 fixtures</button>
           <button data-season="basketball">Basketball · 4 fixtures</button>
@@ -76,19 +79,34 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     }).join('')
     const stats = (['basketball', 'soccer'] as const).map(sport => {
       const stat = ratings(player, sport)
+      const options = (Object.keys(TECHNIQUES) as Technique[]).map(key => {
+        if (TECHNIQUES[key].specialty && TECHNIQUES[key].specialty !== player.specialty) return ''
+        const available = unlocked(player, sport, key)
+        return `<option value="${key}" ${player.equipped[sport] === key ? 'selected' : ''} ${available ? '' : 'disabled'}>
+          ${TECHNIQUES[key].label}${available ? '' : ` · ${unlockRequirement(key)}`}</option>`
+      }).join('')
       return `<li><b>${SPORT[sport]}</b> · ${player.xp[sport]} XP · +${development(player, sport)} skill
-        <small>Passing ${stat.passing} · Finishing ${stat.finishing} · Defensive bonus ${stat.defense}</small></li>`
+        <small>Passing ${stat.passing} · Finishing ${stat.finishing} · Defensive bonus ${stat.defense}</small>
+        <label class="lineup-choice">Ability <select data-ability="${sport}" aria-label="${SPORT[sport]} ability for ${info.name}" ${editable ? '' : 'disabled'}>
+          <option value="">No ability equipped</option>${options}
+        </select></label>
+        ${stat.technique ? `<small>${TECHNIQUES[stat.technique].detail}</small>` : ''}</li>`
     }).join('')
-    const sign = club.roster.length === 12 && editable
-      ? `<section class="club-panel"><h3>Recruit one athlete</h3><div class="recruits">${PROSPECTS.map(entry =>
+    const prospects = availableProspects(club)
+    const sign = prospects.length && editable
+      ? `<section class="club-panel"><h3>Recruit one athlete this season</h3><div class="recruits">${prospects.map(entry =>
         `<div><b>${entry.name}</b><p>Awareness ${entry.awareness} · Basketball ${entry.basketball} · Soccer ${entry.soccer}${entry.keeper ? ' · Goalkeeper' : ''}</p>
         <button data-recruit="${entry.id}">Sign ${entry.name}</button></div>`).join('')}</div></section>` : ''
     const headline = fixture
       ? `Week ${fixture.week} · ${SPORT[fixture.sport]} vs ${fixture.rival}` : 'Season complete'
     const opponent = fixture && (fixture.sport === 'soccer' ? SHAPE_NAMES[fixture.soccer] : DEFENSE_NAMES[fixture.basketball])
 
+    const past = club.history.map(({ mode, results }, index) => {
+      const record = results.map(([a, b]) => a > b ? 'W' : a === b ? 'D' : 'L').join('–')
+      return `<li>Season ${index + 1} · ${mode === 'both' ? 'Both sports' : SPORT[mode]} · ${record}</li>`
+    }).join('')
     container.innerHTML = `<section class="club-hero"><h2>Comets club</h2>
-      <p><b>${headline}</b>${opponent ? ` · ${opponent}` : ''}</p>
+      <p><b>Season ${club.season} · ${headline}</b>${opponent ? ` · ${opponent}` : ''}</p>
       <p class="season-record">${wins} wins · ${draws} draws · ${losses} losses · ${wins * 3 + draws} season points</p>
       <div class="club-actions">${fixture ? `<button class="primary" data-action="play">${club.pending ? 'Resume fixture' : 'Play fixture'}</button>`
         : '<button data-action="new">Start another season</button>'}</div>
@@ -110,7 +128,8 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         ${editable ? `<p class="muted">${canTrain ? 'One training session available this week.' : 'Training used this week.'}</p>
         <div class="club-actions">${allowedSports.map(sport => `<button data-train="${sport}" ${canTrain ? '' : 'disabled'}>Train ${SPORT[sport]}</button>`).join('')}</div>` : ''}
       </section>
-    </div>${sign}${saveControls(true)}`
+    </div>${sign}${past ? `<details class="club-panel past-seasons"><summary>Past seasons</summary><ol>${past}</ol></details>` : ''}
+    ${saveControls(true)}`
   }
 
   function saveControls(hasSave: boolean) {
@@ -131,7 +150,8 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     message = ''
     if (data.season) {
       const mode = data.season as SeasonMode
-      controller.update(createClub(mode))
+      const current = controller.getClub()
+      controller.update(current ? nextSeason(current, mode) : createClub(mode))
       athlete = 'reed'
       lineupSport = mode === 'soccer' ? 'soccer' : 'basketball'
       choosingSeason = false
@@ -171,6 +191,8 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         message = 'Club save loaded.'
       } else if (input.dataset.slot !== undefined) {
         controller.changeStarter(lineupSport, Number(input.dataset.slot), input.value)
+      } else if (input.dataset.ability) {
+        controller.equip(athlete, input.dataset.ability as Sport, input.value ? input.value as Technique : null)
       } else if (input.dataset.specialty !== undefined) {
         controller.specialize(athlete, input.value as Specialty)
       }

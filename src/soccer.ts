@@ -269,10 +269,11 @@ export function shotEstimate(match: Match, player: Footballer) {
   const pressure = nearBall(match, player, 5).length
   const wide = Math.abs(player.position.y - MIDFIELD.y)
   const keeper = athleteById(match, `${otherTeam(player.team)}-0`)
-  const onTarget = clamp(91 - 1.18 * range - 0.54 * wide + (player.finishing - 6) * 4
+  const cleanLook = player.technique === 'clean-look' && pressure === 0 ? 8 : 0
+  const onTarget = clamp(91 + cleanLook - 1.18 * range - 0.54 * wide + (player.finishing - 6) * 4
     - pressure * 8 - Math.max(0, 65 - player.stamina) * 0.35, 10, 95)
   const save = clamp(31 + range * 0.65 + wide * 0.5 + (keeper.keeping - 6) * 4
-    - Math.abs(keeper.position.y - MIDFIELD.y) * 2, 19, 86)
+    - Math.abs(keeper.position.y - MIDFIELD.y) * 2 + (keeper.technique === 'read-play' ? 5 : 0), 19, 86)
   return { range, pressure, onTarget, save, goal: Math.round(onTarget * (100 - save) / 100) }
 }
 
@@ -288,8 +289,9 @@ export function passEstimate(match: Match, from: Footballer, target: Point, kind
     .sort((a, b) => distanceToSegment(a.position, from.position, target) - distanceToSegment(b.position, from.position, target))
   const defenders = kind === 'cross' ? lane.filter(player => distance(player.position, target) <= 7) : lane
   const base = kind === 'cross' ? 90 : kind === 'through' ? 94 : 105
-  const chance = clamp(base - range * 0.55 - defenders.reduce((cost, defender) => cost + 13 + (defender.defense ?? 0), 0)
+  const chance = clamp(base - range * 0.55 - defenders.reduce((cost, defender) => cost + 13 + (defender.defense ?? 0) + (defender.technique === 'read-play' ? 3 : 0), 0)
     + (from.passing - 7) * 3 + ((from.awareness ?? 6) - 6) * 1.5
+    + (defenders.length > 0 && from.technique === 'thread-pass' ? 12 : 0)
     - Math.max(0, 65 - from.stamina) * 0.35, 14, 98)
   return { chance, defenders, range }
 }
@@ -405,7 +407,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
 
   for (const player of next.athletes) {
     const command = commands.get(player.id)
-    player.stamina = clamp(player.stamina + (command ? -ACTIONS[command.kind].stamina : 5), 0, 100)
+    player.stamina = clamp(player.stamina + (command ? -ACTIONS[command.kind].stamina : player.technique === 'second-wind' ? 9 : 5), 0, 100)
   }
   next.randomState = random.state
   next.turn += 1

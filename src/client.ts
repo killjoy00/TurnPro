@@ -4,10 +4,11 @@ import { mountGame, type SportView } from './game-view.ts'
 import { DEFENSE_NAMES, planTurn as basketballAI, type DefenseStyle } from './opponent.ts'
 import { planTurn as soccerAI } from './soccer-opponent.ts'
 import { drawBasketball, drawSoccer } from './surfaces.ts'
-import { readClub, recruit, setStarter, specialize, train, type Club } from './club.ts'
+import { equip, readClub, recruit, setStarter, specialize, train, type Club } from './club.ts'
 import { beginClubFixture, openClubFixture, saveClubTurn } from './club-fixture.ts'
 import { mountClub } from './club-view.ts'
 import type { MatchSnapshot, PlanCommand } from './match.ts'
+import { installGamepad } from './gamepad.ts'
 
 const basketballView: SportView<basketball.Match, basketball.Command> = {
   id: 'basketball',
@@ -17,6 +18,16 @@ const basketballView: SportView<basketball.Match, basketball.Command> = {
   height: basketball.COURT.length,
   turnLimit: basketball.TURN_LIMIT,
   create: seed => basketball.createMatch(seed),
+  practices: [{
+    name: 'Practice a kick-out',
+    create: () => basketball.createMatch(2026),
+    intro: 'Use a screen, drive and kick out to the shooter in one turn.',
+    steps: [
+      { label: 'Reed · Drive and kick out to Vale', athlete: '0-0', kind: 'kickout', target: '0-1' },
+      { label: 'Okafor · Set screen', athlete: '0-4', kind: 'screen' },
+      { label: 'Vale · Catch and shoot', athlete: '0-1', kind: 'catch-shoot' },
+    ],
+  }],
   limit: () => basketball.COMMAND_LIMIT,
   legalCommands: basketball.legalCommands,
   label: basketball.commandLabel,
@@ -51,11 +62,19 @@ const soccerView: SportView<soccer.Match, soccer.Command> = {
       name: 'Beat the press',
       create: soccer.createPressPractice,
       intro: 'Send Adeyemi through the middle and play Reed’s through ball before the press closes.',
+      steps: [
+        { label: 'Reed · Through ball to Adeyemi', athlete: '0-6', kind: 'through', target: '0-9' },
+        { label: 'Adeyemi · Run into the middle', athlete: '0-9', kind: 'run', target: 1 },
+      ],
     },
     {
       name: 'Practice a cross',
       create: soccer.createCrossingPractice,
       intro: 'Queue Vale’s cross to Adeyemi. Send Adeyemi into the middle, then commit.',
+      steps: [
+        { label: 'Vale · Cross to Adeyemi', athlete: '0-8', kind: 'cross', target: '0-9' },
+        { label: 'Adeyemi · Run into the middle', athlete: '0-9', kind: 'run', target: 1 },
+      ],
     },
   ],
   limit: match => match.commandLimit,
@@ -186,6 +205,7 @@ function showClub() {
     start: enterFixture,
     recruit: id => updateClub(recruit(club!, id)),
     train: (id, sport) => updateClub(train(club!, id, sport)),
+    equip: (id, sport, technique) => updateClub(equip(club!, id, sport, technique)),
     specialize: (id, choice) => updateClub(specialize(club!, id, choice)),
     changeStarter: (sport, slot, id) => updateClub(setStarter(club!, sport, slot, id)),
     exportSave() {
@@ -209,3 +229,21 @@ selector.addEventListener('change', () => showQuick(true))
 defense.addEventListener('change', () => showQuick(false))
 clubNav.addEventListener('click', () => screen === 'club' ? showQuick(true) : showClub())
 showQuick(true)
+
+const learn = document.getElementById('learn-dialog') as HTMLDialogElement
+document.getElementById('learn-nav')!.addEventListener('click', () => learn.showModal())
+learn.addEventListener('click', event => {
+  const button = (event.target as Element).closest<HTMLButtonElement>('button[data-learn]')
+  if (!button) return
+  learn.close()
+  if (button.dataset.learn === 'club') {
+    showClub()
+  } else {
+    selector.value = button.dataset.learn!
+    showQuick(true)
+    document.querySelector<HTMLButtonElement>('#practice-tools button')?.click()
+    document.querySelector<HTMLButtonElement>('#lineup button[aria-pressed="true"]')?.focus()
+  }
+})
+
+installGamepad()

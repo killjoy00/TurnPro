@@ -141,3 +141,17 @@ test('timed through balls beat the high press while the compact defense holds sh
   assert.equal(wide.match.holder, '0-9')
   assert.ok(wide.events.some(event => /with a cross/.test(event.text)))
 })
+
+test('equipped abilities affect guarded passes and recovering stamina', () => {
+  const match = createPressPractice()
+  const pass = order(match, '0-6', 'through', '0-9')
+  const carrier = athleteById(match, '0-6')
+  const ordinary = previewPass(match, pass, [])
+  assert.ok(ordinary.defenders.length > 0)
+  carrier.technique = 'thread-pass'
+  assert.equal(previewPass(match, pass, []).chance, ordinary.chance + 12)
+  carrier.technique = 'second-wind'
+  carrier.stamina = 60
+  const recovered = resolveTurn(match, [[], []])
+  assert.equal(athleteById(recovered.match, carrier.id).stamina, 69)
+})

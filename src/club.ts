@@ -1,5 +1,5 @@
 import { clamp } from './math.ts'
-import type { PlanCommand } from './match.ts'
+import type { PlanCommand, Technique } from './match.ts'
 import type { DefenseStyle } from './opponent.ts'
 import type { DefenseShape } from './soccer.ts'
 
@@ -10,6 +10,13 @@ export const SPECIALTIES: Record<Specialty, string> = {
   Playmaker: '+2 passing, −1 finishing',
   Defender: '+2 defensive pressure, −1 finishing',
   Finisher: '+2 finishing, −1 passing',
+}
+
+export const TECHNIQUES: Record<Technique, { label: string; detail: string; specialty?: Specialty }> = {
+  'thread-pass': { label: 'Thread the pass', detail: 'Improves guarded passes.', specialty: 'Playmaker' },
+  'read-play': { label: 'Read the play', detail: 'Improves contests, interceptions and saves.', specialty: 'Defender' },
+  'clean-look': { label: 'Clean look', detail: 'Improves uncontested shots.', specialty: 'Finisher' },
+  'second-wind': { label: 'Second wind', detail: 'Recovers more stamina on turns without an order.' },
 }
 
 interface Profile {
@@ -41,6 +48,9 @@ export const PROSPECTS: readonly Profile[] = [
   { id: 'imani', name: 'Imani', awareness: 8, basketball: 1, soccer: 3, specialty: 'Defender', keeper: true },
   { id: 'cruz', name: 'Cruz', awareness: 6, basketball: 3, soccer: 2, specialty: 'Finisher' },
   { id: 'lin', name: 'Lin', awareness: 9, basketball: 2, soccer: 2, specialty: 'Playmaker' },
+  { id: 'foster', name: 'Foster', awareness: 7, basketball: 2, soccer: 3, specialty: 'Defender', keeper: true },
+  { id: 'sato', name: 'Sato', awareness: 8, basketball: 1, soccer: 3, specialty: 'Finisher' },
+  { id: 'miles', name: 'Miles', awareness: 8, basketball: 3, soccer: 1, specialty: 'Playmaker' },
 ]
 
 export const ROLES: Record<Sport, readonly string[]> = {
@@ -53,10 +63,19 @@ export interface ClubAthlete {
   specialty: Specialty
   xp: Record<Sport, number>
   fatigue: number
+  equipped: Record<Sport, Technique | null>
+}
+
+export interface SeasonRecord {
+  mode: SeasonMode
+  results: [number, number][]
 }
 
 export interface Club {
-  version: 1
+  version: 2
+  season: number
+  history: SeasonRecord[]
+  recruitedSeason: number
   mode: SeasonMode
   roster: ClubAthlete[]
   lineups: Record<Sport, string[]>
@@ -87,12 +106,12 @@ export function profile(id: string): Profile {
 }
 
 function makeAthlete(entry: Profile): ClubAthlete {
-  return { id: entry.id, specialty: entry.specialty, xp: { basketball: 0, soccer: 0 }, fatigue: 0 }
+  return { id: entry.id, specialty: entry.specialty, xp: { basketball: 0, soccer: 0 }, fatigue: 0, equipped: { basketball: null, soccer: null } }
 }
 
 export function createClub(mode: SeasonMode): Club {
   return {
-    version: 1, mode, roster: profiles.map(makeAthlete),
+    version: 2, season: 1, history: [], recruitedSeason: 0, mode, roster: profiles.map(makeAthlete),
     lineups: {
       basketball: ['reed', 'vale', 'blake', 'diaz', 'okafor'],
       soccer: ['shaw', 'mora', 'blake', 'okafor', 'diaz', 'chen', 'reed', 'santos', 'vale', 'adeyemi', 'ito'],
@@ -112,6 +131,15 @@ export function schedule(mode: SeasonMode): Fixture[] {
   }))
 }
 
+export function nextSeason(club: Club, mode: SeasonMode): Club {
+  if (nextFixture(club) || club.pending) throw new Error('Finish the current season first.')
+  return {
+    ...club, mode, season: club.season + 1, history: [...club.history, { mode: club.mode, results: club.results }],
+    results: [], pending: null, trainedWeek: 0,
+    roster: club.roster.map(player => ({ ...player, fatigue: Math.max(0, player.fatigue - 30) })),
+  }
+}
+
 export function nextFixture(club: Club): Fixture | undefined {
   return schedule(club.mode)[club.results.length]
 }
@@ -129,11 +157,15 @@ function openWeek(club: Club): number {
   return next.week
 }
 
+export function availableProspects(club: Club): readonly Profile[] {
+  return club.recruitedSeason === club.season ? [] : PROSPECTS.filter(entry => !club.roster.some(player => player.id === entry.id))
+}
+
 export function recruit(club: Club, id: string): Club {
   openWeek(club)
-  const prospect = PROSPECTS.find(candidate => candidate.id === id)
-  if (!prospect || club.roster.length !== profiles.length) throw new Error('Choose one available prospect this season.')
-  return { ...club, roster: [...club.roster, makeAthlete(prospect)] }
+  const prospect = availableProspects(club).find(candidate => candidate.id === id)
+  if (!prospect) throw new Error('Choose one available prospect this season.')
+  return { ...club, recruitedSeason: club.season, roster: [...club.roster, makeAthlete(prospect)] }
 }
 
 export function train(club: Club, id: string, sport: Sport): Club {
@@ -149,7 +181,12 @@ export function specialize(club: Club, id: string, specialty: Specialty): Club {
   openWeek(club)
   clubAthlete(club, id)
   if (!Object.hasOwn(SPECIALTIES, specialty)) throw new Error('Choose a valid specialty.')
-  return { ...club, roster: club.roster.map(player => player.id === id ? { ...player, specialty } : player) }
+  const player = { ...clubAthlete(club, id), specialty }
+  player.equipped = {
+    basketball: unlocked(player, 'basketball', player.equipped.basketball) ? player.equipped.basketball : null,
+    soccer: unlocked(player, 'soccer', player.equipped.soccer) ? player.equipped.soccer : null,
+  }
+  return { ...club, roster: club.roster.map(entry => entry.id === id ? player : entry) }
 }
 
 export function setStarter(club: Club, sport: Sport, slot: number, id: string): Club {
@@ -162,6 +199,27 @@ export function setStarter(club: Club, sport: Sport, slot: number, id: string): 
   ids[slot] = id
   if (sport === 'soccer' && !profile(ids[0]).keeper) throw new Error('The goalkeeper slot needs a trained keeper.')
   return { ...club, lineups: { ...club.lineups, [sport]: ids } }
+}
+
+export function unlockRequirement(technique: Technique): string {
+  const specialty = TECHNIQUES[technique].specialty
+  return specialty ? `${specialty} · 6 XP in this sport` : '5 total XP across sports'
+}
+
+export function unlocked(player: ClubAthlete, sport: Sport, technique: Technique | null): boolean {
+  if (technique === null) return true
+  const ability = TECHNIQUES[technique]
+  if (!ability) return false
+  return ability.specialty ? player.specialty === ability.specialty && player.xp[sport] >= 6
+    : player.xp.basketball + player.xp.soccer >= 5
+}
+
+export function equip(club: Club, id: string, sport: Sport, technique: Technique | null): Club {
+  openWeek(club)
+  const player = clubAthlete(club, id)
+  if (!unlocked(player, sport, technique)) throw new Error('This ability is still locked.')
+  const updated = { ...player, equipped: { ...player.equipped, [sport]: technique } }
+  return { ...club, roster: club.roster.map(entry => entry.id === id ? updated : entry) }
 }
 
 export function development(player: ClubAthlete, sport: Sport): number {
@@ -178,6 +236,7 @@ export function ratings(player: ClubAthlete, sport: Sport) {
     passing: clamp(4 + skill + pass, 2, 12), finishing: clamp(4 + skill + finish, 2, 12),
     defense: player.specialty === 'Defender' ? 2 : 0,
     keeping: entry.keeper ? 6 + skill : 0,
+    technique: player.equipped[sport] ?? undefined,
   }
 }
 
@@ -217,17 +276,42 @@ function integer(input: unknown, min: number, max: number): boolean {
   return typeof input === 'number' && Number.isSafeInteger(input) && input >= min && input <= max
 }
 
+function isMode(input: unknown): input is SeasonMode {
+  return input === 'both' || input === 'basketball' || input === 'soccer'
+}
+
+function validResults(results: unknown, mode: SeasonMode, complete = false): boolean {
+  const total = schedule(mode).length
+  return Array.isArray(results) && results.length <= total && (!complete || results.length === total)
+    && results.every(score => Array.isArray(score) && score.length === 2 && score.every(value => integer(value, 0, 54)))
+}
+
 export function readClub(raw: string): Club {
   if (raw.length > 128_000) throw new Error('This file is too large to be a club save.')
   const data: unknown = JSON.parse(raw)
-  if (!record(data) || data.version !== 1 || typeof data.mode !== 'string' || !['both', 'basketball', 'soccer'].includes(data.mode)) {
+  if (!record(data) || (data.version !== 1 && data.version !== 2) || !isMode(data.mode)) {
     throw new Error('This is an unsupported club save.')
   }
-  const club = data as unknown as Club
-  if (!Array.isArray(club.roster) || club.roster.length < profiles.length || club.roster.length > profiles.length + 1
+  const migrated = data.version === 1 && Array.isArray(data.roster) ? {
+    ...data, version: 2, season: 1, history: [], recruitedSeason: data.roster.length > profiles.length ? 1 : 0,
+    roster: data.roster.map(player => ({ ...player, equipped: { basketball: null, soccer: null } })),
+  } : data
+  const club = migrated as unknown as Club
+  if (club.version !== 2 || !Array.isArray(club.history) || club.season !== club.history.length + 1
+    || !integer(club.recruitedSeason, 0, club.season) || club.history.some(entry =>
+      !record(entry) || !isMode(entry.mode) || !validResults(entry.results, entry.mode, true))) {
+    throw new Error('The past seasons in this save are invalid.')
+  }
+  if (!Array.isArray(club.roster) || club.roster.length < profiles.length || club.roster.length > profiles.length + PROSPECTS.length
     || club.roster.some(player => !record(player) || typeof player.id !== 'string'
       || typeof player.specialty !== 'string' || !Object.hasOwn(SPECIALTIES, player.specialty) || !integer(player.fatigue, 0, 65)
-      || !record(player.xp) || !integer(player.xp.basketball, 0, 60) || !integer(player.xp.soccer, 0, 60))) {
+      || !record(player.xp) || !integer(player.xp.basketball, 0, Number.MAX_SAFE_INTEGER)
+      || !integer(player.xp.soccer, 0, Number.MAX_SAFE_INTEGER) || !record(player.equipped)
+      || (['basketball', 'soccer'] as const).some(sport => {
+        const selected = player.equipped[sport]
+        return selected !== null && (typeof selected !== 'string' || !Object.hasOwn(TECHNIQUES, selected)
+          || !unlocked(player, sport, selected))
+      }))) {
     throw new Error('The club roster in this save is invalid.')
   }
   const ids = club.roster.map(player => profile(player.id).id)
@@ -238,9 +322,7 @@ export function readClub(raw: string): Club {
         || club.lineups[sport].some(id => !ids.includes(id))) || !profile(club.lineups.soccer[0]).keeper) {
     throw new Error('The lineups in this save are invalid.')
   }
-  if (!Array.isArray(club.results) || club.results.length > schedule(club.mode).length
-    || club.results.some(score => !Array.isArray(score) || score.length !== 2 || score.some(value => !integer(value, 0, 54)))
-    || !integer(club.trainedWeek, 0, nextFixture(club)?.week ?? 4)) {
+  if (!validResults(club.results, club.mode) || !integer(club.trainedWeek, 0, nextFixture(club)?.week ?? 4)) {
     throw new Error('The season schedule in this save is invalid.')
   }
   if (club.pending !== null) {

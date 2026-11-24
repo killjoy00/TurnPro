@@ -3,6 +3,7 @@ import {
   type AthleteSnapshot, type MatchSnapshot, type PlanCommand, type Plans, type Team, type TurnEvent,
 } from './match.ts'
 import type { Point } from './math.ts'
+import { TECHNIQUES } from './club.ts'
 import type { LoggedTurn } from './club-fixture.ts'
 
 export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
@@ -13,7 +14,7 @@ export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
   height: number
   turnLimit: number
   create(seed: number, budget: 3 | 4): S
-  practices?: { name: string; create(budget: 3 | 4): S; intro: string }[]
+  practices?: { name: string; create(budget: 3 | 4): S; intro: string; steps: readonly PracticeStep[] }[]
   limit(match: S): number
   legalCommands(match: S, id: string): C[]
   label(match: S, command: C): string
@@ -46,6 +47,13 @@ const turns = element('turns')
 const canvas = element<HTMLCanvasElement>('court-lines')
 const context = canvas.getContext('2d')!
 
+interface PracticeStep {
+  label: string
+  athlete: string
+  kind: string
+  target?: string | number
+}
+
 interface SeasonMatch<S extends MatchSnapshot, C extends PlanCommand> {
   match: S
   history: LoggedTurn[]
@@ -57,6 +65,11 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
 ) {
   const budgetPreset = element('budget-preset')
   const practice = element('practice-tools')
+  const checklist = element('practice-checklist')
+  let steps: readonly PracticeStep[] = []
+  let coached = false
+  const stepReady = ({ athlete, kind, target }: PracticeStep) =>
+    plan.some(order => order.athlete === athlete && order.kind === kind && order.target === target)
   const budgetInput = element<HTMLSelectElement>('budget-mode')
   const nextBudget = () => budgetInput.value === '4' ? 4 : 3
   const portrait = matchMedia('(max-width: 560px)')
@@ -176,6 +189,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     actions.innerHTML = `<div class="athlete-header">
       <b>${athlete.name}</b><small>${athlete.role}</small><span class="stamina-value">STA ${athlete.stamina}</span>
       </div><p class="instructions">${instruction}</p>
+      ${athlete.technique ? `<p class="practice-ability">${TECHNIQUES[athlete.technique].label} · ${TECHNIQUES[athlete.technique].detail}</p>` : ''}
       <ul class="options" ${commands.length ? '' : 'hidden'}>${commands.map((command, index) => {
         const label = sport.label(match, command)
         const detail = sport.preview(match, command, plan)
@@ -184,8 +198,11 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
           <span>${label}</span><small>${detail}−${sport.stamina(command)} STA</small>
         </button></li>`
       }).join('')}</ul>`
-    commit.disabled = false
-    note.textContent = plan.length ? 'Both teams reveal after you commit.' : 'No orders queued. Commit to use base assignments.'
+    checklist.hidden = !steps.length && !coached
+    checklist.innerHTML = coached ? '<p>Practice play resolved. See the play-by-play for the outcome.</p>' : steps.length
+      ? '<ol>' + steps.map(step => '<li>' + (stepReady(step) ? 'Queued · ' : '') + step.label + '</li>').join('') + '</ol>' : ''
+    commit.disabled = steps.some(step => !stepReady(step))
+    note.textContent = commit.disabled ? 'Queue the practice orders to continue.' : plan.length ? 'Both teams reveal after you commit.' : 'No orders queued. Commit to use base assignments.'
   }
 
   function render() {
@@ -249,12 +266,16 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   }
 
   commit.addEventListener('click', () => {
-    if ((match.turn > sport.turnLimit)) return
+    if (match.turn > sport.turnLimit || commit.disabled) return
     const turn = match.turn
     const opponent = sport.opponent(match, 1)
     const resolution = sport.resolveTurn(match, [plan, opponent])
     season?.saveTurn(plan, resolution.match)
     match = resolution.match
+    if (steps.length) {
+      steps = []
+      coached = true
+    }
     plan = []
     selected = selectPlayer()
     render()
@@ -262,7 +283,9 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     if (match.turn > sport.turnLimit) (season ? element<HTMLButtonElement>('club-nav') : restartButton).focus()
   }, { signal })
 
-  function restart(next: S, message: string) {
+  function restart(next: S, message: string, practiceSteps: readonly PracticeStep[] = []) {
+    steps = practiceSteps
+    coached = false
     match = next
     selected = selectPlayer()
     plan = []
@@ -283,7 +306,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
       const button = document.createElement('button')
       button.type = 'button'
       button.textContent = drill.name
-      button.addEventListener('click', () => restart(drill.create(nextBudget()), drill.intro), { signal })
+      button.addEventListener('click', () => restart(drill.create(nextBudget()), drill.intro, drill.steps), { signal })
       practice.append(button)
     }
   }
@@ -294,6 +317,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   element('court-title').textContent = sport.surfaceName
   markers.setAttribute('aria-label', sport.id === 'soccer' ? 'Athletes on pitch' : 'Athletes on court')
   budgetPreset.hidden = Boolean(season) || sport.id !== 'soccer'
+  practice.hidden = Boolean(season) || !sport.practices?.length
   portrait.addEventListener('change', render, { signal })
 
   render()

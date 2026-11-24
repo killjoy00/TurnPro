@@ -89,6 +89,14 @@ Quick matches and club rivals test explicit tactical responses. High-press socce
 
 The club season playtest succeeds when a player can change an attacking plan against a different defense, sign and develop an athlete, and finish and reload a season. Human tests can now compare whether fatigue, player specialties, and rival tactics lead to different lineup and match decisions.
 
+## Career and desktop playtest
+
+The extended club playtest keeps the roster, skills, equipped abilities and results across seasons. A player can change schedules between seasons and sign another available prospect. Each athlete can equip one ability per sport. Specialty abilities require six XP in that sport. Second wind unlocks at five XP across both sports and can be equipped in either. It improves recovery when an athlete has no order. Version 1 saves migrate to the expanded career, including committed turns in an active fixture.
+
+The same solo build runs as offline HTML and as a packaged Windows or Linux desktop app. The desktop build uses a stable local origin for saves. Guided practice gives players a checklist for coordinated turns, and controller settings let players remap the game’s action buttons.
+
+Before the paid release, play a full match and resume a save on a physical Steam Deck in Gaming Mode. Check controller-only navigation, on-screen instructions, text readability, and suspend and resume there. Use the verified Windows and Linux executables as launch options when setting up the corresponding Steam depots. Steam’s store page and build review follow once the commercial build and store materials are ready. [Valve’s hardware review](https://partner.steamgames.com/doc/steamhardware/compat) · [SteamPipe upload](https://partner.steamgames.com/doc/sdk/uploading) · [Steam review process](https://partner.steamgames.com/doc/store/review_process)
+
 ## Engine and delivery
 
 Use a headless TypeScript rules module and a browser client that renders the engine's state and submits commands. Keep state serializable and avoid hidden time or platform dependencies. Given the same starting state, rules version, seed, and plans, outcomes and event logs must match. UI estimates, AI, and validation read the same state and legal action rules. AI starts from the public snapshot captured before either plan is resolved.

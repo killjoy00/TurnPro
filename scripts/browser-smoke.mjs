@@ -37,7 +37,11 @@ try {
   assert.equal(await page.locator('.turn').count(), 0)
   assert.deepEqual(errors, [])
 
-  await page.getByRole('combobox', { name: 'Opponent defense' }).selectOption('help')
+  await page.getByRole('button', { name: 'How to play' }).click()
+  await page.getByRole('button', { name: 'Practice a basketball combination' }).click()
+  assert.equal(await page.getByRole('button', { name: 'Commit turn' }).isDisabled(), true)
+  assert.match(await page.locator('#practice-checklist').innerText(), /Reed · Drive and kick out/)
+
   await page.getByRole('button', { name: /Drive and kick out to Vale/ }).click()
   await page.getByRole('button', { name: /Okafor, 100 stamina/ }).click()
   await page.getByRole('button', { name: 'Set screen' }).click()
@@ -45,6 +49,7 @@ try {
   await page.getByRole('button', { name: 'Catch and shoot' }).click()
   await page.getByRole('button', { name: 'Commit turn' }).click()
   assert.match(await page.locator('.timeline').first().innerText(), /Vale catches and shoots/)
+  assert.match(await page.locator('#practice-checklist').innerText(), /Practice play resolved/)
 
   const sport = page.getByRole('combobox', { name: 'Sport', exact: true })
   await sport.selectOption('soccer')
@@ -139,6 +144,17 @@ try {
   await page.locator('#club-import').setInputFiles(localSave)
   await page.getByRole('status').filter({ hasText: /Club save loaded/ }).waitFor()
   assert.equal(await page.locator('.schedule tbody tr').filter({ hasText: /Win|Draw|Loss/ }).count(), 6)
+  assert.deepEqual(errors, [])
+
+  await page.getByRole('button', { name: 'Start another season' }).click()
+  await page.getByRole('button', { name: 'Basketball · 4 fixtures' }).click()
+  assert.match(await page.locator('.club-hero').innerText(), /Season 2/)
+  await page.getByText('Past seasons', { exact: true }).click()
+  assert.match(await page.locator('.past-seasons').innerText(), /Season 1 · Both sports/)
+  await page.getByRole('combobox', { name: 'Basketball ability for Reed' }).selectOption('thread-pass')
+  await page.getByRole('combobox', { name: 'Soccer ability for Reed' }).selectOption('second-wind')
+  await page.getByRole('button', { name: 'Play fixture' }).click()
+  assert.match(await page.locator('.practice-ability').innerText(), /Thread the pass/)
   assert.deepEqual(errors, [])
 
   const mobile = await browser.newPage({

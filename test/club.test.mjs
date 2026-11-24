@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  clubAthlete, createClub, nextFixture, ratings, readClub, recruit, schedule, setStarter, specialize, train,
+  clubAthlete, createClub, equip, nextFixture, nextSeason, ratings, readClub, recruit, schedule, setStarter, specialize, train,
 } from '../src/club.ts'
 import { beginClubFixture, openClubFixture, saveClubTurn } from '../src/club-fixture.ts'
 import * as basketball from '../src/basketball.ts'
@@ -84,4 +84,45 @@ test('corrupted and incompatible saves cannot replace a valid season', () => {
   assert.throws(() => openClubFixture(readClub(JSON.stringify({ ...active, pending: { rules: 999, turns: [] } }))), /rules version/)
   const tampered = { ...active, pending: { ...active.pending, turns: [[{ athlete: '1-0', kind: 'shoot' }]] } }
   assert.throws(() => openClubFixture(readClub(JSON.stringify(tampered))), /unavailable/)
+})
+
+test('abilities unlock by specialty and sport, and the club carries them into another season', () => {
+  let club = createClub('both')
+  assert.throws(() => equip(club, 'reed', 'basketball', 'thread-pass'), /locked/)
+  while (nextFixture(club)) {
+    const fixture = nextFixture(club)
+    if (club.trainedWeek < fixture.week) club = train(club, 'reed', 'basketball')
+    club = beginClubFixture(club)
+    let session = openClubFixture(club)
+    while (club.pending) {
+      const resolved = resolveClubTurn(club, session)
+      club = resolved.club
+      session = resolved.session
+    }
+  }
+
+  const previous = club.results
+  club = nextSeason(club, 'basketball')
+  assert.equal(club.season, 2)
+  assert.deepEqual(club.history, [{ mode: 'both', results: previous }])
+  assert.equal(club.results.length, 0)
+  assert.equal(club.trainedWeek, 0)
+  assert.throws(() => equip(club, 'reed', 'soccer', 'thread-pass'), /locked/)
+  club = equip(equip(club, 'reed', 'basketball', 'thread-pass'), 'reed', 'soccer', 'second-wind')
+  assert.equal(ratings(clubAthlete(club, 'reed'), 'basketball').technique, 'thread-pass')
+  assert.equal(ratings(clubAthlete(club, 'reed'), 'soccer').technique, 'second-wind')
+  assert.equal(clubAthlete(specialize(club, 'reed', 'Defender'), 'reed').equipped.basketball, null)
+  assert.deepEqual(readClub(JSON.stringify(club)), club)
+  assert.equal(openClubFixture(beginClubFixture(club)).match.athletes[0].technique, 'thread-pass')
+})
+
+test('first-season saves from the previous build migrate without losing the active fixture', () => {
+  let club = beginClubFixture(recruit(train(createClub('both'), 'reed', 'basketball'), 'imani'))
+  const resolved = resolveClubTurn(club, openClubFixture(club))
+  club = resolved.club
+  const { version, season, history, recruitedSeason, roster, ...state } = club
+  const v1 = { ...state, version: 1, roster: roster.map(({ equipped, ...player }) => player) }
+  const migrated = readClub(JSON.stringify(v1))
+  assert.deepEqual(migrated, club)
+  assert.deepEqual(openClubFixture(migrated), openClubFixture(club))
 })

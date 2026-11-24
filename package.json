@@ -11,10 +11,13 @@
     "check": "tsc && npm test",
     "test": "node --test",
     "simulate": "node scripts/simulate.mjs",
-    "smoke": "node scripts/browser-smoke.mjs",
-    "simulate:soccer": "node scripts/simulate-soccer.mjs"
+    "smoke": "node scripts/browser-smoke.mjs && node scripts/gamepad-smoke.mjs",
+    "simulate:soccer": "node scripts/simulate-soccer.mjs",
+    "desktop:package": "npm run build && node scripts/package-desktop.mjs",
+    "desktop:smoke": "node scripts/desktop-smoke.mjs"
   },
   "devDependencies": {
+    "@electron/packager": "20.3.0",
     "esbuild": "0.28.2",
     "playwright": "1.62.1",
     "typescript": "6.0.3"

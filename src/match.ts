@@ -4,6 +4,8 @@ export type Team = 0 | 1
 export const TEAMS = ['Comets', 'Forge'] as const
 export const COMMAND_LIMIT = 3
 
+export type Technique = 'thread-pass' | 'read-play' | 'clean-look' | 'second-wind'
+
 export interface AthleteSnapshot {
   id: string
   team: Team
@@ -14,6 +16,7 @@ export interface AthleteSnapshot {
   stamina: number
   awareness?: number
   defense?: number
+  technique?: Technique
 }
 
 export interface MatchSnapshot {
