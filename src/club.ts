@@ -1,10 +1,11 @@
 import { clamp } from './math.ts'
 import type { PlanCommand, Technique } from './match.ts'
-import type { DefenseStyle } from './opponent.ts'
-import type { DefenseShape } from './soccer.ts'
+import {
+  schedule, seasonSchedule, simulateRivals, type Fixture, type LeagueProgress, type Score, type SeasonMode, type SeasonRecord, type Sport,
+} from './league.ts'
 
-export type Sport = 'basketball' | 'soccer'
-export type SeasonMode = Sport | 'both'
+export { schedule } from './league.ts'
+export type { SeasonMode, Sport } from './league.ts'
 export type Specialty = 'Playmaker' | 'Defender' | 'Finisher'
 export const SPECIALTIES: Record<Specialty, string> = {
   Playmaker: '+2 passing, −1 finishing',
@@ -66,38 +67,16 @@ export interface ClubAthlete {
   equipped: Record<Sport, Technique | null>
 }
 
-export interface SeasonRecord {
-  mode: SeasonMode
-  results: [number, number][]
-}
-
-export interface Club {
-  version: 2
+export interface Club extends SeasonRecord {
+  version: 3
   season: number
   history: SeasonRecord[]
   recruitedSeason: number
-  mode: SeasonMode
   roster: ClubAthlete[]
   lineups: Record<Sport, string[]>
   trainedWeek: number
-  results: [number, number][]
   pending: { rules: number; turns: PlanCommand[][] } | null
 }
-
-interface Fixture {
-  week: number
-  sport: Sport
-  seed: number
-  rival: string
-  basketball: DefenseStyle
-  soccer: DefenseShape
-}
-
-const RIVALS = [
-  { rival: 'Forge', basketball: 'switch', soccer: 'press' },
-  { rival: 'Breakers', basketball: 'help', soccer: 'compact' },
-  { rival: 'Rovers', basketball: 'stay', soccer: 'balanced' },
-] as const
 
 export function profile(id: string): Profile {
   const found = [...profiles, ...PROSPECTS].find(candidate => candidate.id === id)
@@ -111,7 +90,7 @@ function makeAthlete(entry: Profile): ClubAthlete {
 
 export function createClub(mode: SeasonMode): Club {
   return {
-    version: 2, season: 1, history: [], recruitedSeason: 0, mode, roster: profiles.map(makeAthlete),
+    version: 3, season: 1, history: [], recruitedSeason: 0, mode, league: { seedOffset: 0, otherResults: [] }, roster: profiles.map(makeAthlete),
     lineups: {
       basketball: ['reed', 'vale', 'blake', 'diaz', 'okafor'],
       soccer: ['shaw', 'mora', 'blake', 'okafor', 'diaz', 'chen', 'reed', 'santos', 'vale', 'adeyemi', 'ito'],
@@ -120,28 +99,17 @@ export function createClub(mode: SeasonMode): Club {
   }
 }
 
-export function schedule(mode: SeasonMode): Fixture[] {
-  if (mode === 'both') {
-    return RIVALS.flatMap((rival, index) => (['basketball', 'soccer'] as const).map((sport, offset) => ({
-      ...rival, week: index + 1, sport, seed: 2026 + index * 17 + offset,
-    })))
-  }
-  return [RIVALS[0], RIVALS[1], RIVALS[2], RIVALS[0]].map((rival, index) => ({
-    ...rival, week: index + 1, sport: mode, seed: 2026 + index * 17,
-  }))
-}
-
 export function nextSeason(club: Club, mode: SeasonMode): Club {
   if (nextFixture(club) || club.pending) throw new Error('Finish the current season first.')
   return {
-    ...club, mode, season: club.season + 1, history: [...club.history, { mode: club.mode, results: club.results }],
-    results: [], pending: null, trainedWeek: 0,
+    ...club, mode, season: club.season + 1, history: [...club.history, { mode: club.mode, results: club.results, league: club.league }],
+    results: [], league: { seedOffset: (club.season * 257) >>> 0, otherResults: [] }, pending: null, trainedWeek: 0,
     roster: club.roster.map(player => ({ ...player, fatigue: Math.max(0, player.fatigue - 30) })),
   }
 }
 
 export function nextFixture(club: Club): Fixture | undefined {
-  return schedule(club.mode)[club.results.length]
+  return seasonSchedule(club, club.season)[club.results.length]
 }
 
 export function clubAthlete(club: Club, id: string): ClubAthlete {
@@ -245,7 +213,7 @@ export function startFixture(club: Club, rules: number): Club {
   return { ...club, pending: { rules, turns: [] } }
 }
 
-export function settleFixture(club: Club, score: [number, number], players: readonly { team: number; stamina: number }[]): Club {
+export function settleFixture(club: Club, score: Score, players: readonly { team: number; stamina: number }[]): Club {
   const fixture = nextFixture(club)
   const pending = club.pending
   if (!fixture || !pending) throw new Error('There is no current fixture.')
@@ -261,7 +229,9 @@ export function settleFixture(club: Club, score: [number, number], players: read
       xp: { ...player.xp, [fixture.sport]: player.xp[fixture.sport] + (earned >= 3 ? 2 : 1) },
     }
   })
-  const next = { ...club, roster, results: [...club.results, score], pending: null }
+  const league = club.league && fixture.stage === 'regular'
+    ? { ...club.league, otherResults: [...club.league.otherResults, simulateRivals(fixture)] } : club.league
+  const next = { ...club, roster, league, results: [...club.results, score], pending: null }
   if (nextFixture(next)?.week !== fixture.week) {
     next.roster = roster.map(player => ({ ...player, fatigue: Math.max(0, player.fatigue - 18) }))
   }
@@ -280,26 +250,47 @@ function isMode(input: unknown): input is SeasonMode {
   return input === 'both' || input === 'basketball' || input === 'soccer'
 }
 
-function validResults(results: unknown, mode: SeasonMode, complete = false): boolean {
-  const total = schedule(mode).length
-  return Array.isArray(results) && results.length <= total && (!complete || results.length === total)
-    && results.every(score => Array.isArray(score) && score.length === 2 && score.every(value => integer(value, 0, 54)))
+function isScore(score: unknown): score is Score {
+  return Array.isArray(score) && score.length === 2 && score.every(value => integer(value, 0, 54))
+}
+
+function seasonValid(input: unknown, season: number, complete = false): input is SeasonRecord {
+  if (!record(input) || !isMode(input.mode) || !Array.isArray(input.results) || !input.results.every(isScore)) return false
+  const regular = schedule(input.mode).length
+  if (input.league === null) return input.results.length === regular
+  const league = input.league
+  if (!record(league) || !integer(league.seedOffset, 0, 0xffffffff) || !Array.isArray(league.otherResults)
+    || !league.otherResults.every(isScore) || league.otherResults.length !== Math.min(input.results.length, regular)
+    || input.results.length > regular + 2) return false
+  const total = seasonSchedule(input as unknown as SeasonRecord, season).length
+  return complete ? input.results.length === total : input.results.length <= total
+}
+
+function migrateClub(data: Record<string, unknown>): unknown {
+  if (data.version === 3 || !isMode(data.mode) || !Array.isArray(data.results)
+    || !data.results.every(isScore) || !Array.isArray(data.roster)) return data
+  const regular = schedule(data.mode)
+  if (data.results.length > regular.length) return data
+  const previous = data.version === 1 ? { ...data, season: 1, history: [],
+    recruitedSeason: data.roster.length > profiles.length ? 1 : 0,
+    roster: data.roster.map(player => ({ ...player, equipped: { basketball: null, soccer: null } })),
+  } : data
+  if (!Array.isArray(previous.history)) return data
+  const league: LeagueProgress | null = data.results.length === regular.length ? null
+    : { seedOffset: 0, otherResults: regular.slice(0, data.results.length).map(simulateRivals) }
+  return { ...previous, version: 3, league, history: previous.history.map(entry => ({ ...entry, league: null })) }
 }
 
 export function readClub(raw: string): Club {
   if (raw.length > 128_000) throw new Error('This file is too large to be a club save.')
   const data: unknown = JSON.parse(raw)
-  if (!record(data) || (data.version !== 1 && data.version !== 2) || !isMode(data.mode)) {
+  if (!record(data) || ![1, 2, 3].includes(data.version as number) || !isMode(data.mode)) {
     throw new Error('This is an unsupported club save.')
   }
-  const migrated = data.version === 1 && Array.isArray(data.roster) ? {
-    ...data, version: 2, season: 1, history: [], recruitedSeason: data.roster.length > profiles.length ? 1 : 0,
-    roster: data.roster.map(player => ({ ...player, equipped: { basketball: null, soccer: null } })),
-  } : data
-  const club = migrated as unknown as Club
-  if (club.version !== 2 || !Array.isArray(club.history) || club.season !== club.history.length + 1
-    || !integer(club.recruitedSeason, 0, club.season) || club.history.some(entry =>
-      !record(entry) || !isMode(entry.mode) || !validResults(entry.results, entry.mode, true))) {
+  const club = migrateClub(data) as Club
+  if (club.version !== 3 || !Array.isArray(club.history) || club.season !== club.history.length + 1
+    || !integer(club.recruitedSeason, 0, club.season)
+    || !club.history.every((entry, index) => seasonValid(entry, index + 1, true))) {
     throw new Error('The past seasons in this save are invalid.')
   }
   if (!Array.isArray(club.roster) || club.roster.length < profiles.length || club.roster.length > profiles.length + PROSPECTS.length
@@ -322,7 +313,7 @@ export function readClub(raw: string): Club {
         || club.lineups[sport].some(id => !ids.includes(id))) || !profile(club.lineups.soccer[0]).keeper) {
     throw new Error('The lineups in this save are invalid.')
   }
-  if (!validResults(club.results, club.mode) || !integer(club.trainedWeek, 0, nextFixture(club)?.week ?? 4)) {
+  if (!seasonValid(club, club.season) || !integer(club.trainedWeek, 0, nextFixture(club)?.week ?? 4)) {
     throw new Error('The season schedule in this save is invalid.')
   }
   if (club.pending !== null) {

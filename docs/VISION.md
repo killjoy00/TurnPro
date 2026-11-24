@@ -97,6 +97,12 @@ The same solo build runs as offline HTML and as a packaged Windows or Linux desk
 
 Before the paid release, play a full match and resume a save on a physical Steam Deck in Gaming Mode. Check controller-only navigation, on-screen instructions, text readability, and suspend and resume there. Use the verified Windows and Linux executables as launch options when setting up the corresponding Steam depots. Steam’s store page and build review follow once the commercial build and store materials are ready. [Valve’s hardware review](https://partner.steamgames.com/doc/steamhardware/compat) · [SteamPipe upload](https://partner.steamgames.com/doc/sdk/uploading) · [Steam review process](https://partner.steamgames.com/doc/store/review_process)
 
+## Club league and final
+
+Each regular fixture advances a four-club table. The two clubs on the other side of the schedule play a deterministic AI match in the same sport, and that score is saved with the round. The top two reach the final. Single-sport clubs play one final match. In a mixed final, one basketball fixture and one soccer fixture each award three points for a win or one for a draw. A tied final goes to the higher league seed.
+
+A season records the final outcome and results against each rival. The next season starts a fresh table with a different match seed, and the club retains its roster, training, titles, and rival records. Earlier completed saves retain their original results and remain complete. Older in-progress saves preserve their match and join the league at their current round.
+
 ## Engine and delivery
 
 Use a headless TypeScript rules module and a browser client that renders the engine's state and submits commands. Keep state serializable and avoid hidden time or platform dependencies. Given the same starting state, rules version, seed, and plans, outcomes and event logs must match. UI estimates, AI, and validation read the same state and legal action rules. AI starts from the public snapshot captured before either plan is resolved.

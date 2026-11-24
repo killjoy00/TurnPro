@@ -102,9 +102,10 @@ test('abilities unlock by specialty and sport, and the club carries them into an
   }
 
   const previous = club.results
+  const league = club.league
   club = nextSeason(club, 'basketball')
   assert.equal(club.season, 2)
-  assert.deepEqual(club.history, [{ mode: 'both', results: previous }])
+  assert.deepEqual(club.history, [{ mode: 'both', results: previous, league }])
   assert.equal(club.results.length, 0)
   assert.equal(club.trainedWeek, 0)
   assert.throws(() => equip(club, 'reed', 'soccer', 'thread-pass'), /locked/)
@@ -120,7 +121,7 @@ test('first-season saves from the previous build migrate without losing the acti
   let club = beginClubFixture(recruit(train(createClub('both'), 'reed', 'basketball'), 'imani'))
   const resolved = resolveClubTurn(club, openClubFixture(club))
   club = resolved.club
-  const { version, season, history, recruitedSeason, roster, ...state } = club
+  const { version, season, history, recruitedSeason, roster, league, ...state } = club
   const v1 = { ...state, version: 1, roster: roster.map(({ equipped, ...player }) => player) }
   const migrated = readClub(JSON.stringify(v1))
   assert.deepEqual(migrated, club)
