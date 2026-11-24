@@ -27,6 +27,7 @@ export function planTurn(match: Match, team: Team, style: DefenseStyle = 'balanc
   const holder = athleteById(match, match.holder)
   const commands: Command[] = []
   const available = (athlete: Athlete) => legalCommands(match, athlete.id)
+  const unassigned = (athlete: Athlete) => !commands.some(command => command.athlete === athlete.id)
   const add = (command: Command | undefined) => {
     if (command) commands.push(command)
   }
@@ -59,14 +60,13 @@ export function planTurn(match: Match, team: Team, style: DefenseStyle = 'balanc
       add((finish && current.range <= 23 ? finish : drive) ?? shoot ?? pass)
     }
 
-    const screener = choose(athletes.filter(athlete => available(athlete).some(command => command.kind === 'screen')),
+    const screener = choose(athletes.filter(athlete => unassigned(athlete) && available(athlete).some(command => command.kind === 'screen')),
       athlete => 2 * athlete.strength - distance(athlete.position, holder.position))
     if (screener && commands[0]?.kind !== 'pass') {
       add(available(screener).find(command => command.kind === 'screen'))
     }
 
-    const runner = choose(athletes.filter(athlete => athlete.id !== holder.id
-      && !commands.some(command => command.athlete === athlete.id)),
+    const runner = choose(athletes.filter(athlete => athlete.id !== holder.id && unassigned(athlete)),
     athlete => athlete.shooting + (receiver?.id === athlete.id ? 4 : 0))
     if (runner && commands.length < 3) {
       const cuts = available(runner).filter(command => command.kind === 'cut')

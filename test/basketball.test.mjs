@@ -131,3 +131,14 @@ test('a drive can finish, or kick out when a shooter’s defender helps', () => 
   ])
   assert.ok(switched.events.some(event => /Grant switches onto Reed. Quinn picks up Okafor/.test(event.text)))
 })
+
+test('the AI leaves its catch-and-shoot receiver free of another order', () => {
+  let match = createMatch(36)
+  while (match.turn < TURN_LIMIT) {
+    match = resolveTurn(match, [planTurn(match, 0), planTurn(match, 1, 'pressure')]).match
+  }
+  const attack = planTurn(match, 0)
+  assert.ok(attack.some(command => command.kind === 'kickout' && command.target === '0-1'))
+  assert.deepEqual(attack.filter(command => command.athlete === '0-1'), [{ athlete: '0-1', kind: 'catch-shoot' }])
+  assert.doesNotThrow(() => resolveTurn(match, [attack, planTurn(match, 1, 'pressure')]))
+})
