@@ -1,0 +1,85 @@
+import type { Point } from './math.ts'
+
+export type Team = 0 | 1
+export const TEAMS = ['Comets', 'Forge'] as const
+export const COMMAND_LIMIT = 3
+
+export interface AthleteSnapshot {
+  id: string
+  team: Team
+  number: string
+  name: string
+  role: string
+  position: Point
+  stamina: number
+}
+
+export interface MatchSnapshot {
+  turn: number
+  seed: number
+  holder: string
+  score: [number, number]
+  athletes: readonly AthleteSnapshot[]
+}
+
+export interface PlanCommand {
+  athlete: string
+  kind: string
+  target?: string | number
+}
+
+export type Plans<C extends PlanCommand> = readonly [readonly C[], readonly C[]]
+
+export type EventKind =
+  | 'plan' | 'movement' | 'ball' | 'score' | 'possession' | 'turnover'
+  | 'save' | 'restart' | 'finish'
+
+export type TurnEvent =
+  | { kind: EventKind; text: string }
+  | { kind: 'rebound'; text: string; offensive: boolean }
+
+export function otherTeam(team: Team): Team {
+  return team === 0 ? 1 : 0
+}
+
+export function findAthlete<A extends AthleteSnapshot>(athletes: readonly A[], id: string): A {
+  const athlete = athletes.find(candidate => candidate.id === id)
+  if (!athlete) throw new Error('Unknown athlete.')
+  return athlete
+}
+
+export function validatePlans<S extends MatchSnapshot, C extends PlanCommand>(
+  match: S, plans: Plans<C>, limit: number, legalCommands: (match: S, id: string) => readonly C[],
+) {
+  for (const team of [0, 1] as const) {
+    const plan = plans[team]
+    const used = new Set<string>()
+    if (plan.length > limit) throw new Error(`A plan can use up to ${limit === 3 ? 'three' : limit} commands.`)
+    for (const command of plan) {
+      if (used.has(command.athlete)) throw new Error('An athlete can take one command per turn.')
+      const athlete = findAthlete(match.athletes, command.athlete)
+      if (athlete.team !== team || !legalCommands(match, athlete.id).some(legal =>
+        legal.athlete === command.athlete && legal.kind === command.kind
+        && ('target' in legal) === ('target' in command) && legal.target === command.target)) {
+        throw new Error('That command is unavailable in this position.')
+      }
+      used.add(command.athlete)
+    }
+  }
+}
+
+export function revealPlans<S extends MatchSnapshot, C extends PlanCommand>(
+  match: S, plans: Plans<C>, label: (match: S, command: C) => string,
+): TurnEvent[] {
+  return ([0, 1] as const).map(team => {
+    const descriptions = plans[team].map(command =>
+      `${findAthlete(match.athletes, command.athlete).name} · ${label(match, command)}`)
+    return { kind: 'plan', text: `${TEAMS[team]}: ${descriptions.join(' / ') || 'Base assignments'}` }
+  })
+}
+
+export function finalScore(score: MatchSnapshot['score']): string {
+  const [home, away] = score
+  const result = home === away ? 'Draw' : `${TEAMS[home > away ? 0 : 1]} win`
+  return `Final score: ${home}–${away}. ${result}.`
+}

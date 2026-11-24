@@ -15,7 +15,7 @@
 body { margin: 0; }
 button { font: inherit; color: inherit; cursor: pointer; }
 button:disabled { cursor: default; }
-button:focus-visible, summary:focus-visible {
+button:focus-visible, summary:focus-visible, select:focus-visible {
   outline: 3px solid var(--lime);
   outline-offset: 3px;
 }
@@ -25,8 +25,26 @@ button:focus-visible, summary:focus-visible {
 h1, h2, p { margin: 0; }
 h1 { font-size: 27px; font-weight: 950; letter-spacing: -0.07em; font-style: italic; white-space: nowrap; }
 h1 em { color: var(--lime); }
-.mode { color: var(--muted); padding-left: 20px; border-left: 1px solid var(--line); font-size: .85rem; }
-.mode span { margin-left: 5px; }
+.sport-select, .budget-preset select {
+  border: 1px solid var(--line); background: #18252a; color: inherit;
+  border-radius: 4px; min-height: 38px; padding-inline: 7px; font: inherit; font-size: .82rem;
+}
+.budget-preset {
+  padding: 5px 15px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  color: var(--muted); border-bottom: 1px solid var(--line); font-size: .8rem;
+}
+.budget-preset[hidden] { display: none; }
+.budget-preset select { min-height: 34px; }
+.budget-preset button {
+  margin-left: auto; min-height: 34px; border: 1px solid var(--line);
+  background: #233431; border-radius: 4px; padding-inline: 7px; font-size: .78rem;
+}
+.budget-preset button:hover { border-color: var(--lime); }
+.soccer .court { background: #2a624c; aspect-ratio: 1.55; }
+.soccer .marker { width: clamp(23px, 4vw, 29px); height: clamp(23px, 4vw, 29px); font-size: .7rem; }
+.soccer .lineup { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.soccer .options { max-height: 272px; overflow: auto; padding: 3px; margin-inline: -3px; }
+.soccer .timeline li.save, .soccer .timeline li.restart { color: var(--home); }
 .restart {
   margin-left: auto; border: 1px solid var(--line); background: transparent;
   border-radius: 4px; min-height: 40px; padding-inline: 13px; font-weight: 650;
@@ -139,8 +157,7 @@ h2 { font-size: 1rem; font-weight: 780; letter-spacing: .016em; }
 }
 @media (max-width: 650px) {
   .topbar-inner { min-height: 57px; gap: 12px; }
-  .mode { padding-left: 10px; }
-  .mode span { display: none; }
+  .sport-select { min-width: 0; font-size: .75rem; }
   h1 { font-size: 23px; }
   main { padding-top: 13px; }
   .scoreboard { min-height: 74px; gap: 9px; padding-inline: 8px; margin-bottom: 12px; }
@@ -149,4 +166,8 @@ h2 { font-size: 1rem; font-weight: 780; letter-spacing: .016em; }
   .lineup button { padding: 4px; }
   .player-line { flex-wrap: wrap; column-gap: 4px; row-gap: 0; }
   .actions { min-height: auto; }
+}
+
+@media (max-width: 560px) {
+  .soccer .court { aspect-ratio: 0.94; }
 }

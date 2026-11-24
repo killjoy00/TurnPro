@@ -1,0 +1,277 @@
+import {
+  findAthlete, TEAMS,
+  type AthleteSnapshot, type MatchSnapshot, type PlanCommand, type Plans, type Team, type TurnEvent,
+} from './match.ts'
+import type { Point } from './math.ts'
+
+export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
+  id: 'basketball' | 'soccer'
+  surfaceName: string
+  intro: string
+  width: number
+  height: number
+  turnLimit: number
+  create(seed: number, budget: 3 | 4): S
+  practice?: { create(budget: 3 | 4): S; intro: string }
+  limit(match: S): number
+  legalCommands(match: S, id: string): C[]
+  label(match: S, command: C): string
+  stamina(command: C): number
+  preview(match: S, command: C): string
+  noOrders(athlete: AthleteSnapshot): string
+  previewTarget(match: S, command: C): Point | undefined
+  opponent(match: S, team: Team): C[]
+  resolveTurn(match: S, plans: Plans<C>): { match: S; events: TurnEvent[] }
+  draw(context: CanvasRenderingContext2D): void
+  clockDetail(match: S, portrait: boolean): string
+}
+
+function element<T extends HTMLElement = HTMLElement>(id: string): T {
+  return document.getElementById(id) as T
+}
+
+const scoreboard = element('scoreboard')
+const possession = element('possession')
+const markers = element('markers')
+const lineup = element('lineup')
+const budget = element('budget')
+const orders = element('orders')
+const actions = element('actions')
+const commit = element<HTMLButtonElement>('commit')
+const note = element('commit-note')
+const summary = element('summary')
+const turns = element('turns')
+const canvas = element<HTMLCanvasElement>('court-lines')
+const context = canvas.getContext('2d')!
+
+export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(sport: SportView<S, C>, signal: AbortSignal) {
+  const budgetPreset = element('budget-preset')
+  const practice = element<HTMLButtonElement>('practice')
+  const budgetInput = element<HTMLSelectElement>('budget-mode')
+  const nextBudget = () => budgetInput.value === '4' ? 4 : 3
+  const portrait = matchMedia('(max-width: 560px)')
+  const isPortrait = () => sport.id === 'soccer' && portrait.matches
+  let match = sport.create(2026, nextBudget())
+  let selected = selectPlayer()
+  let plan: C[] = []
+
+  function selectPlayer(): string {
+    const holder = findAthlete(match.athletes, match.holder)
+    return holder.team === 0 ? holder.id : match.athletes.find(player => player.team === 0 && player.role !== 'GK')!.id
+  }
+
+  function project(point: Point): Point {
+    return isPortrait() ? { x: point.y / sport.height, y: 1 - point.x / sport.width }
+      : { x: point.x / sport.width, y: point.y / sport.height }
+  }
+
+  function drawBoard() {
+    if (isPortrait()) {
+      context.setTransform(0, -canvas.height / sport.width, canvas.width / sport.height, 0, 0, canvas.height)
+    } else {
+      context.setTransform(canvas.width / sport.width, 0, 0, canvas.height / sport.height, 0, 0)
+    }
+    sport.draw(context)
+    context.strokeStyle = sport.id === 'soccer' ? '#e3fc9b' : '#194f43'
+    context.lineWidth = sport.id === 'soccer' ? 0.5 : 0.28
+    context.setLineDash([0.8, 0.55])
+    for (const command of plan) {
+      const from = findAthlete(match.athletes, command.athlete).position
+      const to = sport.previewTarget(match, command)
+      if (!to) continue
+      context.beginPath()
+      context.moveTo(from.x, from.y)
+      context.lineTo(to.x, to.y)
+      context.stroke()
+    }
+    context.setLineDash([])
+  }
+
+  function renderScore() {
+    const [home, away] = match.score
+    const clock = (match.turn > sport.turnLimit)
+      ? `<strong>Final</strong>${home === away ? 'Draw' : `${TEAMS[home > away ? 0 : 1]} win`}`
+      : `<strong>Turn ${match.turn} / ${sport.turnLimit}</strong>${sport.clockDetail(match, isPortrait())}`
+    scoreboard.innerHTML = `
+      <div class="team-score home">
+        <div class="team-name"><b>${TEAMS[0]}</b><small>You</small></div><strong class="points">${home}</strong>
+      </div>
+      <div class="turn-clock">${clock}</div>
+      <div class="team-score away">
+        <strong class="points">${away}</strong><div class="team-name"><b>${TEAMS[1]}</b><small>CPU</small></div>
+      </div>`
+  }
+
+  function renderBoard() {
+    const holder = findAthlete(match.athletes, match.holder)
+    possession.classList.toggle('away', holder.team === 1)
+    possession.innerHTML = (match.turn > sport.turnLimit) ? 'Match complete' : `Ball <strong>${TEAMS[holder.team]} · ${holder.name}</strong>`
+    markers.innerHTML = match.athletes.map(athlete => {
+      const ownsBall = athlete.id === holder.id && !(match.turn > sport.turnLimit)
+      const queued = plan.some(command => command.athlete === athlete.id)
+      const description = `${TEAMS[athlete.team]} ${athlete.name}, number ${athlete.number}${ownsBall ? ', has the ball' : ''}${queued ? ', command queued' : ''}`
+      const position = project(athlete.position)
+      return `<button type="button" class="marker ${athlete.team ? 'away' : 'home'} ${queued ? 'queued' : ''}"
+        style="left:${position.x * 100}%;top:${position.y * 100}%"
+        aria-label="${description}" title="${description}" aria-pressed="${selected === athlete.id}" data-athlete="${athlete.id}">
+        ${athlete.number}${ownsBall ? '<i class="ball" aria-hidden="true"></i>' : ''}
+      </button>`
+    }).join('')
+    lineup.innerHTML = match.athletes.filter(athlete => athlete.team === 0).map(athlete =>
+      `<button type="button" data-athlete="${athlete.id}" aria-pressed="${selected === athlete.id}"
+         aria-label="${athlete.name}, ${athlete.stamina} stamina">
+        <span class="player-line"><span>${sport.id === 'soccer' ? athlete.role : athlete.number}</span><b>${athlete.name}</b></span>
+        <span class="stamina-bar" aria-hidden="true"><i class="${athlete.stamina < 40 ? 'low' : ''}" style="width:${athlete.stamina}%"></i></span>
+      </button>`).join('')
+    drawBoard()
+  }
+
+  function availableCommands(): C[] {
+    const athlete = findAthlete(match.athletes, selected)
+    if (athlete.team !== 0) return []
+    if (plan.length >= sport.limit(match) && !plan.some(command => command.athlete === selected)) return []
+    return sport.legalCommands(match, selected)
+  }
+
+  function renderPlan() {
+    budget.textContent = `${plan.length} / ${sport.limit(match)} commands`
+    orders.innerHTML = plan.length ? `<ul>${plan.map(command => {
+      const athlete = findAthlete(match.athletes, command.athlete)
+      return `<li><span><strong>${athlete.name}</strong> · ${sport.label(match, command)}</span>
+        <button type="button" class="remove" data-remove="${athlete.id}" aria-label="Remove ${athlete.name}'s command">×</button></li>`
+    }).join('')}</ul>` : ''
+
+    if ((match.turn > sport.turnLimit)) {
+      actions.innerHTML = '<p class="instructions">Review the play-by-play or start a new match.</p>'
+      commit.disabled = true
+      note.textContent = ''
+      return
+    }
+
+    const athlete = findAthlete(match.athletes, selected)
+    const commands = availableCommands()
+    const active = plan.find(command => command.athlete === athlete.id)
+    const endOfBudget = plan.length >= sport.limit(match) && !active
+    const instruction = athlete.team !== 0 ? 'Select a Comets athlete to give an order.'
+      : endOfBudget ? 'Remove an order or select a teammate with a queued command.'
+      : commands.length === 0 ? sport.noOrders(athlete)
+      : active ? 'Choose another order to replace the one queued.'
+      : 'Choose an order. Uncommanded teammates follow their assignments.'
+
+    actions.innerHTML = `<div class="athlete-header">
+      <b>${athlete.name}</b><small>${athlete.role}</small><span class="stamina-value">STA ${athlete.stamina}</span>
+      </div><p class="instructions">${instruction}</p>
+      <ul class="options" ${commands.length ? '' : 'hidden'}>${commands.map((command, index) => {
+        const label = sport.label(match, command)
+        const detail = sport.preview(match, command)
+        return `<li><button class="option" type="button" data-command="${index}"
+        aria-pressed="${Boolean(active && sport.label(match, active) === label)}">
+          <span>${label}</span><small>${detail}−${sport.stamina(command)} STA</small>
+        </button></li>`
+      }).join('')}</ul>`
+    commit.disabled = false
+    note.textContent = plan.length ? 'Both teams reveal after you commit.' : 'No orders queued. Commit to use base assignments.'
+  }
+
+  function render() {
+    renderScore()
+    renderBoard()
+    renderPlan()
+  }
+
+  function selectAthlete(container: HTMLElement, event: MouseEvent) {
+    const button = (event.target as Element).closest<HTMLButtonElement>('button[data-athlete]')
+    if (!button?.dataset.athlete) return
+    selected = button.dataset.athlete
+    renderBoard()
+    renderPlan()
+    container.querySelector<HTMLButtonElement>(`[data-athlete="${selected}"]`)?.focus()
+  }
+
+  markers.addEventListener('click', event => selectAthlete(markers, event), { signal })
+  lineup.addEventListener('click', event => selectAthlete(lineup, event), { signal })
+
+  actions.addEventListener('click', event => {
+    const button = (event.target as Element).closest<HTMLButtonElement>('button[data-command]')
+    if (!button) return
+    const command = availableCommands()[Number(button.dataset.command)]
+    if (!command) return
+    plan = [...plan.filter(previous => previous.athlete !== command.athlete), command]
+    renderBoard()
+    renderPlan()
+    actions.querySelector<HTMLButtonElement>(`[data-command="${button.dataset.command}"]`)?.focus()
+  }, { signal })
+
+  orders.addEventListener('click', event => {
+    const button = (event.target as Element).closest<HTMLButtonElement>('button[data-remove]')
+    if (!button?.dataset.remove) return
+    selected = button.dataset.remove
+    plan = plan.filter(command => command.athlete !== selected)
+    renderBoard()
+    renderPlan()
+    lineup.querySelector<HTMLButtonElement>(`[data-athlete="${selected}"]`)?.focus()
+  }, { signal })
+
+  function recordTurn(turn: number, events: TurnEvent[]) {
+    const important = events.find(event => event.kind === 'finish')
+      ?? events.find(event => event.kind === 'score')
+      ?? events.find(event => event.kind === 'save')
+      ?? events.find(event => event.kind === 'turnover')
+      ?? events.find(event => event.kind === 'possession')
+      ?? events.find(event => event.kind === 'rebound')
+      ?? events.find(event => event.kind === 'restart')
+      ?? events.find(event => event.kind === 'ball')
+      ?? events.find(event => event.kind === 'movement')
+    const message = important?.text ?? 'Both teams adjust their positions.'
+    summary.textContent = `Turn ${turn} · ${message}`
+    for (const history of turns.querySelectorAll('details[open]')) history.removeAttribute('open')
+    const detail = document.createElement('details')
+    detail.className = 'turn'
+    detail.open = true
+    detail.innerHTML = `<summary>Turn ${turn} · ${match.score.join('–')}</summary>
+      <ul class="timeline">${events.map(event => `<li class="${event.kind}">${event.text}</li>`).join('')}</ul>`
+    turns.prepend(detail)
+  }
+
+  commit.addEventListener('click', () => {
+    if ((match.turn > sport.turnLimit)) return
+    const turn = match.turn
+    const opponent = sport.opponent(match, 1)
+    const resolution = sport.resolveTurn(match, [plan, opponent])
+    match = resolution.match
+    plan = []
+    selected = selectPlayer()
+    render()
+    recordTurn(turn, resolution.events)
+    if ((match.turn > sport.turnLimit)) element<HTMLButtonElement>('restart').focus()
+  }, { signal })
+
+  function restart(next: S, message: string) {
+    match = next
+    selected = selectPlayer()
+    plan = []
+    turns.replaceChildren()
+    summary.textContent = message
+    render()
+  }
+
+  element<HTMLButtonElement>('restart').addEventListener('click', () => {
+    restart(sport.create((match.seed + 1) >>> 0, nextBudget()), 'New match. The Comets start with the ball.')
+  }, { signal })
+
+  const drill = sport.practice
+  practice.hidden = !drill
+  if (drill) {
+    practice.addEventListener('click', () => restart(drill.create(nextBudget()), drill.intro), { signal })
+  }
+
+  summary.textContent = sport.intro
+  turns.replaceChildren()
+  document.body.classList.toggle('soccer', sport.id === 'soccer')
+  element('court-title').textContent = sport.surfaceName
+  markers.setAttribute('aria-label', sport.id === 'soccer' ? 'Athletes on pitch' : 'Athletes on court')
+  budgetPreset.hidden = sport.id !== 'soccer'
+  portrait.addEventListener('change', render, { signal })
+
+  render()
+}

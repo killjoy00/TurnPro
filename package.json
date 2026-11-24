@@ -11,7 +11,8 @@
     "check": "tsc && npm test",
     "test": "node --test",
     "simulate": "node scripts/simulate.mjs",
-    "smoke": "node scripts/browser-smoke.mjs"
+    "smoke": "node scripts/browser-smoke.mjs",
+    "simulate:soccer": "node scripts/simulate-soccer.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
