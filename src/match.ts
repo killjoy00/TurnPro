@@ -12,6 +12,8 @@ export interface AthleteSnapshot {
   role: string
   position: Point
   stamina: number
+  awareness?: number
+  defense?: number
 }
 
 export interface MatchSnapshot {
@@ -19,6 +21,7 @@ export interface MatchSnapshot {
   seed: number
   holder: string
   score: [number, number]
+  teams?: [string, string]
   athletes: readonly AthleteSnapshot[]
 }
 
@@ -68,18 +71,22 @@ export function validatePlans<S extends MatchSnapshot, C extends PlanCommand>(
   }
 }
 
+export function teamNames(match: MatchSnapshot): readonly [string, string] {
+  return match.teams ?? TEAMS
+}
+
 export function revealPlans<S extends MatchSnapshot, C extends PlanCommand>(
   match: S, plans: Plans<C>, label: (match: S, command: C) => string,
 ): TurnEvent[] {
   return ([0, 1] as const).map(team => {
     const descriptions = plans[team].map(command =>
       `${findAthlete(match.athletes, command.athlete).name} · ${label(match, command)}`)
-    return { kind: 'plan', text: `${TEAMS[team]}: ${descriptions.join(' / ') || 'Base assignments'}` }
+    return { kind: 'plan', text: `${teamNames(match)[team]}: ${descriptions.join(' / ') || 'Base assignments'}` }
   })
 }
 
-export function finalScore(score: MatchSnapshot['score']): string {
-  const [home, away] = score
-  const result = home === away ? 'Draw' : `${TEAMS[home > away ? 0 : 1]} win`
+export function finalScore(match: MatchSnapshot): string {
+  const [home, away] = match.score
+  const result = home === away ? 'Draw' : `${teamNames(match)[home > away ? 0 : 1]} win`
   return `Final score: ${home}–${away}. ${result}.`
 }

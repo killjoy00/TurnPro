@@ -1,4 +1,4 @@
-name: Turn Pro prototypes
+name: Turn Pro playtest
 
 on:
   push:
@@ -27,6 +27,6 @@ jobs:
       - run: npm run smoke
       - uses: actions/upload-artifact@v7
         with:
-          name: turn-pro-prototypes
+          name: turn-pro-playtest
           path: dist/turn-pro.html
           if-no-files-found: error

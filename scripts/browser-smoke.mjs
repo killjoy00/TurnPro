@@ -10,7 +10,7 @@ try {
   page.on('pageerror', error => errors.push(error.message))
   await page.goto(game)
   assert.equal(await page.locator('.marker').count(), 10)
-  await page.getByRole('button', { name: 'Drive' }).focus()
+  await page.getByRole('button', { name: /^Drive −14 STA$/ }).focus()
   await page.keyboard.press('Enter')
   await page.getByRole('button', { name: /Okafor, 100 stamina/ }).click()
   await page.getByRole('button', { name: 'Set screen' }).click()
@@ -37,6 +37,15 @@ try {
   assert.equal(await page.locator('.turn').count(), 0)
   assert.deepEqual(errors, [])
 
+  await page.getByRole('combobox', { name: 'Opponent defense' }).selectOption('help')
+  await page.getByRole('button', { name: /Drive and kick out to Vale/ }).click()
+  await page.getByRole('button', { name: /Okafor, 100 stamina/ }).click()
+  await page.getByRole('button', { name: 'Set screen' }).click()
+  await page.getByRole('button', { name: /Vale, 100 stamina/ }).click()
+  await page.getByRole('button', { name: 'Catch and shoot' }).click()
+  await page.getByRole('button', { name: 'Commit turn' }).click()
+  assert.match(await page.locator('.timeline').first().innerText(), /Vale catches and shoots/)
+
   const sport = page.getByRole('combobox', { name: 'Sport', exact: true })
   await sport.selectOption('soccer')
   assert.equal(await page.locator('.marker').count(), 22)
@@ -54,6 +63,14 @@ try {
   const crossed = await page.locator('.timeline').innerText()
   assert.match(crossed, /Adeyemi runs/)
   assert.match(crossed, /Vale finds Adeyemi with a cross/)
+  await page.getByRole('button', { name: 'Beat the press' }).click()
+  const through = page.getByRole('button', { name: /Through ball to Adeyemi/ })
+  assert.match(await through.innerText(), /Clear|Guarded|Crowded/)
+  await through.click()
+  await page.getByRole('button', { name: /Adeyemi, 100 stamina/ }).click()
+  await page.getByRole('button', { name: 'Run into the middle' }).click()
+  await page.getByRole('button', { name: 'Commit turn' }).click()
+  assert.match(await page.locator('.timeline').innerText(), /Reed finds Adeyemi with a through ball/)
   await page.getByRole('button', { name: 'New match' }).click()
   assert.match(await page.locator('.turn-clock').innerText(), /Turn 1 \/ 18/i)
   for (let turn = 1; turn <= 18; turn += 1) {
@@ -74,12 +91,62 @@ try {
   assert.match(await page.locator('.turn-clock').innerText(), /Turn 2 \/ 12/i)
   assert.deepEqual(errors, [])
 
+  await page.getByRole('button', { name: 'Club season' }).click()
+  await page.getByRole('button', { name: 'Both sports · 6 fixtures' }).click()
+  await page.getByRole('button', { name: 'Train Basketball' }).click()
+  assert.match(await page.locator('.sport-stats').innerText(), /Basketball · 3 XP/)
+  assert.match(await page.locator('.sport-stats').innerText(), /Soccer · 0 XP/)
+  await page.getByRole('button', { name: 'Sign Imani' }).click()
+  await page.getByRole('button', { name: 'Soccer', exact: true }).click()
+  await page.getByRole('combobox', { name: 'GK starter, slot 1' }).selectOption('imani')
+
+  for (let fixture = 0; fixture < 6; fixture += 1) {
+    await page.getByRole('button', { name: 'Play fixture' }).click()
+    const limit = fixture % 2 === 0 ? 12 : 18
+    assert.equal(await page.locator('.marker').count(), limit === 12 ? 10 : 22)
+    if (fixture === 1) {
+      assert.match(await page.getByRole('button', { name: /Imani, \d+ stamina/ }).innerText(), /Imani/)
+      const reed = await page.getByRole('button', { name: /Reed, \d+ stamina/ }).getAttribute('aria-label')
+      assert.ok(Number(reed.match(/(\d+) stamina/)[1]) < 100)
+    }
+    for (let turn = 1; turn <= limit; turn += 1) {
+      if (fixture === 0 && turn === 1) await page.getByRole('button', { name: /^Drive −14 STA$/ }).click()
+      await page.getByRole('button', { name: 'Commit turn' }).click()
+      if (fixture === 0 && turn === 1) {
+        const first = await page.locator('.timeline').first().innerText()
+        await page.reload()
+        await page.getByRole('button', { name: 'Club season' }).click()
+        await page.getByRole('button', { name: 'Resume fixture' }).click()
+        assert.match(await page.locator('.turn-clock').innerText(), /Turn 2 \/ 12/i)
+        assert.equal(await page.locator('.timeline').first().innerText(), first)
+      }
+    }
+    assert.match(await page.locator('.turn-clock').innerText(), /Final/i)
+    await page.getByRole('button', { name: 'Back to club' }).click()
+  }
+  assert.match(await page.locator('.club-hero').innerText(), /Season complete/)
+  assert.equal(await page.locator('.schedule tbody tr').filter({ hasText: /Win|Draw|Loss/ }).count(), 6)
+  const exportEvent = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export save' }).click()
+  const exported = await exportEvent
+  assert.equal(exported.suggestedFilename(), 'turn-pro-club.json')
+  const localSave = await exported.path()
+  await page.locator('#club-import').setInputFiles({
+    name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{"version":999}'),
+  })
+  await page.getByRole('status').filter({ hasText: /change could not be applied/ }).waitFor()
+  assert.match(await page.locator('.club-hero').innerText(), /Season complete/)
+  await page.locator('#club-import').setInputFiles(localSave)
+  await page.getByRole('status').filter({ hasText: /Club save loaded/ }).waitFor()
+  assert.equal(await page.locator('.schedule tbody tr').filter({ hasText: /Win|Draw|Loss/ }).count(), 6)
+  assert.deepEqual(errors, [])
+
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true,
   })
   await mobile.goto(game)
   assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth), 390)
-  await mobile.getByRole('button', { name: 'Drive' }).tap()
+  await mobile.getByRole('button', { name: /^Drive −14 STA$/ }).tap()
   assert.match(await mobile.locator('#budget').innerText(), /1 \/ 3/)
   await mobile.getByRole('button', { name: 'Commit turn' }).tap()
   assert.match(await mobile.locator('.turn-clock').innerText(), /Turn 2/i)
@@ -89,7 +156,13 @@ try {
   await mobile.getByRole('button', { name: 'Carry forward' }).tap()
   await mobile.getByRole('button', { name: 'Commit turn' }).tap()
   assert.match(await mobile.locator('.turn-clock').innerText(), /Turn 2/i)
-  console.log('Basketball and soccer matches, the crossing drill, keyboard, restart, and mobile touch passed.')
+  await mobile.evaluate(() => localStorage.removeItem('turn-pro-club-v1'))
+  await mobile.reload()
+  await mobile.getByRole('button', { name: 'Club season' }).tap()
+  await mobile.getByRole('button', { name: 'Soccer · 4 fixtures' }).tap()
+  assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth), 390)
+  assert.match(await mobile.locator('.club-hero').innerText(), /Soccer vs Forge/)
+  console.log('Both sports, tactical drills, the six-fixture club season, saved match resume, export/import, and mobile touch passed.')
 } finally {
   await browser.close()
 }
