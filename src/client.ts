@@ -2,18 +2,20 @@ import * as basketball from './basketball.ts'
 import * as soccer from './soccer.ts'
 import * as hockey from './hockey.ts'
 import { planTurn as hockeyAI } from './hockey-opponent.ts'
+import * as football from './football.ts'
+import { planTurn as footballAI } from './football-opponent.ts'
 import { mountGame, type SportView } from './game-view.ts'
 import { DEFENSE_NAMES, planTurn as basketballAI, type DefenseStyle } from './opponent.ts'
 import { planTurn as soccerAI } from './soccer-opponent.ts'
-import { drawBasketball, drawHockey, drawSoccer } from './surfaces.ts'
+import { drawBasketball, drawFootball, drawHockey, drawSoccer } from './surfaces.ts'
 import { equip, readClub, recruit, setStarter, specialize, train, type Club } from './club.ts'
 import { beginClubFixture, openClubFixture, saveClubTurn } from './club-fixture.ts'
 import { mountClub } from './club-view.ts'
-import type { MatchSnapshot, PlanCommand } from './match.ts'
+import { teamNames, type MatchSnapshot, type PlanCommand } from './match.ts'
 import { installGamepad } from './gamepad.ts'
 import { installDisplaySettings } from './display-settings.ts'
 
-declare const TURN_PRO_HOCKEY: boolean
+declare const TURN_PRO_FULL_PROTOTYPE: boolean
 
 const basketballView: SportView<basketball.Match, basketball.Command> = {
   id: 'basketball',
@@ -166,6 +168,59 @@ function mountHockey(signal: AbortSignal) {
   mountGame(hockeyView, signal)
 }
 
+function mountFootball(signal: AbortSignal) {
+  const footballView: SportView<football.Match, football.Command> = {
+    id: 'football',
+    turnName: 'Snap',
+    surfaceName: 'Gridiron',
+    intro: 'Pick a play with your quarterback and adjust two assignments. Blue marks the snap, gold marks the first down.',
+    width: football.FIELD.width,
+    height: football.FIELD.height,
+    turnLimit: football.TURN_LIMIT,
+    create: seed => football.createMatch(seed),
+    practices: [{
+      name: 'Practice third and five',
+      intro: 'Go to Vale on a slant. Give Blake pass protection and commit all three orders on this snap.',
+      create: football.createThirdDownPractice,
+      steps: [
+        { label: 'Reed · Quick pass to Vale', athlete: '0-o-0', kind: 'quick-pass', target: '0-o-7' },
+        { label: 'Vale · Cut on a slant', athlete: '0-o-7', kind: 'slant' },
+        { label: 'Blake · Pass protect', athlete: '0-o-2', kind: 'protect' },
+      ],
+    }],
+    limit: () => 3,
+    legalCommands: football.legalCommands,
+    label: football.commandLabel,
+    stamina: order => football.ACTIONS[order.kind].stamina,
+    preview(match, order, plan) {
+      if ('target' in order || order.kind === 'field-goal') {
+        const reading = football.playEstimate(match, order, plan)
+        return order.kind === 'field-goal' ? `~${reading.chance}% make · `
+          : `~${reading.chance}% if thrown · ${reading.yards} yd route · `
+      }
+      if (order.kind === 'inside' || order.kind === 'sweep-left' || order.kind === 'sweep-right') {
+        return `~${football.playEstimate(match, order, plan).yards} yd base · `
+      }
+      if (order.kind === 'slant') return 'Supports a quick pass · '
+      if (order.kind === 'go') return 'Supports a deep pass · '
+      return ''
+    },
+    noOrders: () => 'This athlete follows their base assignment and recovers stamina on this snap.',
+    previewTarget: football.commandTarget,
+    opponent: footballAI,
+    resolveTurn: football.resolveTurn,
+    draw: drawFootball,
+    clockDetail: match => `Q${football.quarter(match)} · ${football.downLabel(match)}`,
+    opponentDetail: match => match.offense === 1 ? 'Offense' : 'Defense',
+    lineupDetail(match, portrait) {
+      const forward = football.direction(match, match.offense) === 1
+      const attack = portrait ? (forward ? 'up' : 'down') : (forward ? 'right' : 'left')
+      return `${teamNames(match)[match.offense]} offense · ${football.spotLabel(match.yard)} · Attack ${attack}`
+    },
+  }
+  mountGame(footballView, signal)
+}
+
 const selector = document.getElementById('sport') as HTMLSelectElement
 const defense = document.getElementById('defense') as HTMLSelectElement
 const clubNav = document.getElementById('club-nav') as HTMLButtonElement
@@ -231,14 +286,17 @@ function basketballDefense(style: DefenseStyle): typeof basketballView {
 
 function showQuick(resetDefense: boolean) {
   changeScreen('quick')
+  if (TURN_PRO_FULL_PROTOTYPE && (selector.value === 'hockey' || selector.value === 'football')) {
+    document.getElementById('quick-defense')!.hidden = true
+    if (selector.value === 'hockey') mountHockey(route.signal)
+    else mountFootball(route.signal)
+    return
+  }
   if (resetDefense) {
     const options = selector.value === 'soccer' ? soccer.SHAPE_NAMES : DEFENSE_NAMES
     defense.replaceChildren(...Object.entries(options).map(([value, label]) => new Option(label, value)))
   }
-  if (TURN_PRO_HOCKEY && selector.value === 'hockey') {
-    document.getElementById('quick-defense')!.hidden = true
-    mountHockey(route.signal)
-  } else if (selector.value === 'soccer') mountGame(soccerView, route.signal)
+  if (selector.value === 'soccer') mountGame(soccerView, route.signal)
   else mountGame(basketballDefense(defense.value as DefenseStyle), route.signal)
 }
 

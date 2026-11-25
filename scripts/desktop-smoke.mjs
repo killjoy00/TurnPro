@@ -15,9 +15,17 @@ try {
   let page = await app.firstWindow()
   await page.waitForURL('turnpro://game/index.html')
   const sports = page.locator('#sport option')
+  const expected = launch ? ['basketball', 'soccer'] : ['basketball', 'soccer', 'hockey', 'football']
   assert.deepEqual(await sports.evaluateAll(options => options.map(option => option.value)),
-    launch ? ['basketball', 'soccer'] : ['basketball', 'soccer', 'hockey'])
+    expected)
   assert.equal(await page.evaluate(() => typeof globalThis.require), 'undefined')
+  for (const sport of expected) {
+    await page.getByRole('combobox', { name: 'Sport', exact: true }).selectOption(sport)
+    assert.equal(await page.locator('.marker').count(), { basketball: 10, soccer: 22, hockey: 12, football: 22 }[sport])
+    const unit = sport === 'football' ? 'snap' : 'turn'
+    await page.getByRole('button', { name: `Commit ${unit}` }).click()
+    assert.match(await page.locator('.turn-clock').innerText(), new RegExp(`${unit} 2`, 'i'))
+  }
   await page.getByRole('button', { name: 'Club season' }).click()
   await page.getByRole('button', { name: 'Both sports · 6 fixtures' }).click()
   await page.getByRole('button', { name: 'Play fixture' }).click()

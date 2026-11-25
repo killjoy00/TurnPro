@@ -7,7 +7,8 @@ import { TECHNIQUES } from './club.ts'
 import type { LoggedTurn } from './club-fixture.ts'
 
 export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
-  id: 'basketball' | 'soccer' | 'hockey'
+  id: 'basketball' | 'soccer' | 'hockey' | 'football'
+  turnName?: string
   surfaceName: string
   intro: string
   width: number
@@ -24,10 +25,10 @@ export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
   previewTarget(match: S, command: C, plan: readonly C[]): Point | undefined
   opponent(match: S, team: Team): C[]
   resolveTurn(match: S, plans: Plans<C>): { match: S; events: TurnEvent[] }
-  draw(context: CanvasRenderingContext2D): void
+  draw(context: CanvasRenderingContext2D, match: S): void
   clockDetail(match: S, portrait: boolean): string
   opponentDetail(match: S): string
-  lineupDetail?(match: S): string
+  lineupDetail?(match: S, portrait: boolean): string
 }
 
 function element<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -81,7 +82,9 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   let plan: C[] = []
   const teams = teamNames(match)
   const restartButton = element<HTMLButtonElement>('restart')
+  const turnName = sport.turnName ?? 'Turn'
   restartButton.hidden = Boolean(season)
+  commit.innerHTML = `Commit ${turnName.toLowerCase()} <span aria-hidden="true">→</span>`
 
   function selectPlayer(): string {
     const holder = findAthlete(match.athletes, match.holder)
@@ -99,8 +102,9 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     } else {
       context.setTransform(canvas.width / sport.width, 0, 0, canvas.height / sport.height, 0, 0)
     }
-    sport.draw(context)
-    context.strokeStyle = sport.id === 'soccer' ? '#e3fc9b' : sport.id === 'hockey' ? '#204e6a' : '#194f43'
+    sport.draw(context, match)
+    context.strokeStyle = sport.id === 'soccer' || sport.id === 'football' ? '#e3fc9b'
+      : sport.id === 'hockey' ? '#204e6a' : '#194f43'
     context.lineWidth = sport.id === 'basketball' ? 0.28 : 0.5
     context.setLineDash([0.8, 0.55])
     for (const command of plan) {
@@ -119,7 +123,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     const [home, away] = match.score
     const clock = (match.turn > sport.turnLimit)
       ? `<strong>Final</strong>${home === away ? 'Draw' : `${teams[home > away ? 0 : 1]} win`}`
-      : `<strong>Turn ${match.turn} / ${sport.turnLimit}</strong>${sport.clockDetail(match, isPortrait())}`
+      : `<strong>${turnName} ${match.turn} / ${sport.turnLimit}</strong>${sport.clockDetail(match, isPortrait())}`
     scoreboard.innerHTML = `
       <div class="team-score home">
         <div class="team-name"><b>${teams[0]}</b><small>You</small></div><strong class="points">${home}</strong>
@@ -152,7 +156,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
         <span class="player-line"><span>${sport.id !== 'basketball' ? athlete.role : athlete.number}</span><b>${athlete.name}</b></span>
         <span class="stamina-bar" aria-hidden="true"><i class="${athlete.stamina < 40 ? 'low' : ''}" style="width:${athlete.stamina}%"></i></span>
       </button>`).join('')
-    lineupDetail.textContent = sport.lineupDetail?.(match) ?? ''
+    lineupDetail.textContent = sport.lineupDetail?.(match, isPortrait()) ?? ''
     lineupDetail.hidden = !sport.lineupDetail
     drawBoard()
   }
@@ -260,12 +264,12 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
       ?? events.find(event => event.kind === 'ball')
       ?? events.find(event => event.kind === 'movement')
     const message = important?.text ?? 'Both teams adjust their positions.'
-    summary.textContent = `Turn ${turn} · ${message}`
+    summary.textContent = `${turnName} ${turn} · ${message}`
     for (const history of turns.querySelectorAll('details[open]')) history.removeAttribute('open')
     const detail = document.createElement('details')
     detail.className = 'turn'
     detail.open = true
-    detail.innerHTML = `<summary>Turn ${turn} · ${score.join('–')}</summary>
+    detail.innerHTML = `<summary>${turnName} ${turn} · ${score.join('–')}</summary>
       <ul class="timeline">${events.map(event => `<li class="${event.kind}">${event.text}</li>`).join('')}</ul>`
     turns.prepend(detail)
   }
@@ -320,8 +324,10 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   for (const entry of season?.history ?? []) recordTurn(entry.turn, entry.events, entry.score)
   document.body.classList.toggle('soccer', sport.id === 'soccer')
   document.body.classList.toggle('hockey', sport.id === 'hockey')
+  document.body.classList.toggle('football', sport.id === 'football')
   element('court-title').textContent = sport.surfaceName
-  markers.setAttribute('aria-label', sport.id === 'soccer' ? 'Athletes on pitch' : sport.id === 'hockey' ? 'Players on ice' : 'Athletes on court')
+  const markerLabels = { soccer: 'Athletes on pitch', hockey: 'Players on ice', football: 'Players on field', basketball: 'Athletes on court' }
+  markers.setAttribute('aria-label', markerLabels[sport.id])
   budgetPreset.hidden = Boolean(season) || sport.id !== 'soccer'
   practice.hidden = Boolean(season) || !sport.practices?.length
   portrait.addEventListener('change', render, { signal })

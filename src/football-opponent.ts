@@ -1,0 +1,50 @@
+import { COMMAND_LIMIT, otherTeam, type Team } from './match.ts'
+import { clamp } from './math.ts'
+import { finished, legalCommands, playEstimate, TURN_LIMIT, type Command, type Match, type Play } from './football.ts'
+
+export function planTurn(match: Match, team: Team): Command[] {
+  if (finished(match)) return []
+  const squad = match.athletes.filter(player => player.team === team).sort((a, b) => b.stamina - a.stamina)
+  const options = squad.flatMap(player => legalCommands(match, player.id))
+  const needed = match.sticks - match.yard
+
+  if (match.offense !== team) {
+    const kinds = match.down === 4 && match.yard >= 58 && needed >= 4
+      ? ['rush-kick', 'fill', 'cover-short']
+      : needed >= 8 ? ['blitz', 'cover-deep', 'cover-short']
+        : ['fill', 'fill', 'cover-short']
+    const plan: Command[] = []
+    for (const kind of kinds) {
+      const option = options.find(order => order.kind === kind && !plan.some(previous => previous.athlete === order.athlete))
+      if (option) plan.push(option)
+    }
+    return plan
+  }
+
+  const calls = options.filter((order): order is Play => order.athlete === match.holder)
+  const fieldGoal = calls.find(play => play.kind === 'field-goal')
+  const punt = calls.find(play => play.kind === 'punt')
+  const trailing = match.score[team] < match.score[otherTeam(team)]
+  const urgent = match.turn >= TURN_LIMIT - 3 && trailing
+  if (fieldGoal && !urgent && (needed > 3 || match.turn >= TURN_LIMIT - 1)) return [fieldGoal]
+  if (punt && !fieldGoal && !urgent && (needed > 2 || match.yard < 50)) return [punt]
+
+  const candidates = calls.filter(play => play.kind !== 'punt' && play.kind !== 'field-goal').map(play => {
+    const passing = 'target' in play
+    const route = passing ? options.find(order => order.athlete === play.target
+      && order.kind === (play.kind === 'deep-pass' ? 'go' : 'slant')) : undefined
+    const support = options.filter(order => order.kind === (passing ? 'protect' : 'run-block'))
+    const plan = [play, ...(route ? [route] : []), ...support].slice(0, COMMAND_LIMIT)
+    const estimate = playEstimate(match, play, plan)
+    const catchChance = estimate.chance / 100 * (1 - estimate.sack / 100)
+    const needsChunk = urgent || needed >= 12 || (match.down === 2 && match.yard >= 50 && needed >= 6)
+    const yards = Math.min(estimate.yards, 100 - match.yard, Math.max(7, needed + (needsChunk ? 14 : 3)))
+    const conversion = clamp((estimate.yards - needed + 4) / 7, 0, 1)
+    const setupRun = !passing && match.down === 1 ? 0.7 : 0
+    const deepRisk = play.kind === 'deep-pass' && !needsChunk ? 1.9 : 0
+    const score = yards * catchChance * 0.46 + conversion * catchChance * (match.down >= 3 ? 13 : 4)
+      + setupRun - deepRisk - (passing ? (1 - catchChance) * (3 + estimate.pick * 0.14) : 0)
+    return { plan, score }
+  })
+  return candidates.sort((a, b) => b.score - a.score)[0]?.plan ?? []
+}

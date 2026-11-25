@@ -1,6 +1,6 @@
 # Steam launch candidate
 
-The launch candidate contains basketball, soccer, and the solo club career. Hockey is available in the separate playtest edition.
+This packaging preview contains basketball, soccer, and the solo club career. The [four-sport prototype](VISION.md#prototype-completion) is the build to use for prototype testing. Commercial release planning follows that playtest.
 
 ## Prepare the Windows and Linux builds
 
