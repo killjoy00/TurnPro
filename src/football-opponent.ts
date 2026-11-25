@@ -2,7 +2,10 @@ import { COMMAND_LIMIT, otherTeam, type Team } from './match.ts'
 import { clamp } from './math.ts'
 import { finished, legalCommands, playEstimate, TURN_LIMIT, type Command, type Match, type Play } from './football.ts'
 
-export function planTurn(match: Match, team: Team): Command[] {
+export const FOOTBALL_STYLES = { balanced: 'Situational defense', pressure: 'Blitz-heavy', shell: 'Deep coverage' } as const
+export type FootballStyle = keyof typeof FOOTBALL_STYLES
+
+export function planTurn(match: Match, team: Team, style: FootballStyle = 'balanced'): Command[] {
   if (finished(match)) return []
   const squad = match.athletes.filter(player => player.team === team).sort((a, b) => b.stamina - a.stamina)
   const options = squad.flatMap(player => legalCommands(match, player.id))
@@ -11,8 +14,9 @@ export function planTurn(match: Match, team: Team): Command[] {
   if (match.offense !== team) {
     const kinds = match.down === 4 && match.yard >= 58 && needed >= 4
       ? ['rush-kick', 'fill', 'cover-short']
-      : needed >= 8 ? ['blitz', 'cover-deep', 'cover-short']
-        : ['fill', 'fill', 'cover-short']
+      : style === 'pressure' ? ['blitz', 'blitz', 'cover-short']
+        : style === 'shell' ? ['cover-deep', 'cover-deep', 'fill']
+          : needed >= 8 ? ['blitz', 'cover-deep', 'cover-short'] : ['fill', 'fill', 'cover-short']
     const plan: Command[] = []
     for (const kind of kinds) {
       const option = options.find(order => order.kind === kind && !plan.some(previous => previous.athlete === order.athlete))

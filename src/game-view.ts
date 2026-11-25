@@ -57,7 +57,7 @@ interface PracticeStep {
   target?: string | number
 }
 
-interface SeasonMatch<S extends MatchSnapshot, C extends PlanCommand> {
+export interface SeasonMatch<S extends MatchSnapshot, C extends PlanCommand> {
   match: S
   history: LoggedTurn[]
   saveTurn(orders: readonly C[], match: S): void

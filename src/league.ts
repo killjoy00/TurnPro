@@ -1,17 +1,31 @@
 import * as basketball from './basketball.ts'
 import * as soccer from './soccer.ts'
+import * as hockey from './hockey.ts'
+import * as football from './football.ts'
 import { planTurn as basketballAI, type DefenseStyle } from './opponent.ts'
 import { planTurn as soccerAI } from './soccer-opponent.ts'
+import { planTurn as hockeyAI, type HockeyStyle } from './hockey-opponent.ts'
+import { planTurn as footballAI, type FootballStyle } from './football-opponent.ts'
 
-export type Sport = 'basketball' | 'soccer'
-export type SeasonMode = Sport | 'both'
+declare const TURN_PRO_FULL_PROTOTYPE: boolean
+
+export const SPORTS = ['basketball', 'soccer', 'hockey', 'football'] as const
+export type Sport = typeof SPORTS[number]
+export type SeasonMode = Sport | 'both' | 'all'
 export type Score = [number, number]
+export const TURN_LIMITS: Record<Sport, number> = {
+  basketball: basketball.TURN_LIMIT, soccer: soccer.TURN_LIMIT, hockey: hockey.TURN_LIMIT, football: football.TURN_LIMIT,
+}
+
+export function seasonSports(mode: SeasonMode): readonly Sport[] {
+  return mode === 'all' ? SPORTS : mode === 'both' ? ['basketball', 'soccer'] : [mode]
+}
 
 export const RIVALS = [
-  { rival: 'Forge', basketball: 'switch', soccer: 'press' },
-  { rival: 'Breakers', basketball: 'help', soccer: 'compact' },
-  { rival: 'Rovers', basketball: 'stay', soccer: 'balanced' },
-] as const satisfies readonly { rival: string; basketball: DefenseStyle; soccer: soccer.DefenseShape }[]
+  { rival: 'Forge', basketball: 'switch', soccer: 'press', hockey: 'pressure', football: 'pressure' },
+  { rival: 'Breakers', basketball: 'help', soccer: 'compact', hockey: 'slot', football: 'shell' },
+  { rival: 'Rovers', basketball: 'stay', soccer: 'balanced', hockey: 'balanced', football: 'balanced' },
+] as const satisfies readonly { rival: string; basketball: DefenseStyle; soccer: soccer.DefenseShape; hockey: HockeyStyle; football: FootballStyle }[]
 
 export type Rival = typeof RIVALS[number]['rival']
 export type Team = 'Comets' | Rival
@@ -24,6 +38,8 @@ export interface Fixture {
   rival: Rival
   basketball: DefenseStyle
   soccer: soccer.DefenseShape
+  hockey: HockeyStyle
+  football: FootballStyle
   stage: 'regular' | 'final'
 }
 
@@ -46,6 +62,9 @@ export function schedule(mode: SeasonMode, seedOffset = 0): Fixture[] {
     return RIVALS.flatMap((rival, index) => (['basketball', 'soccer'] as const)
       .map((sport, leg) => makeFixture(rival, sport, index, leg)))
   }
+  if (mode === 'all') {
+    return RIVALS.flatMap((rival, index) => SPORTS.map((sport, leg) => makeFixture(rival, sport, index * 2 + Math.floor(leg / 2), leg % 2)))
+  }
   return [...RIVALS, RIVALS[0]].map((rival, index) => makeFixture(rival, mode, index, 0))
 }
 
@@ -67,6 +86,19 @@ export function simulateRivals(fixture: Fixture): Score {
     }
     return match.score
   }
+  if (typeof TURN_PRO_FULL_PROTOTYPE === 'undefined' || TURN_PRO_FULL_PROTOTYPE) {
+    if (fixture.sport === 'hockey') {
+      let match = hockey.createMatch(seed, openingTeam)
+      while (!hockey.finished(match)) match = hockey.resolveTurn(match, [hockeyAI(match, 0, home.hockey), hockeyAI(match, 1, away.hockey)]).match
+      return match.score
+    }
+    if (fixture.sport === 'football') {
+      let match = football.createMatch(seed, openingTeam)
+      while (!football.finished(match)) match = football.resolveTurn(match, [footballAI(match, 0, home.football), footballAI(match, 1, away.football)]).match
+      return match.score
+    }
+  }
+  if (fixture.sport !== 'soccer') throw new Error('This fixture requires the four-sport build.')
   let match = soccer.createMatch(seed, openingTeam, 3, away.soccer)
   match.shapes[0] = home.soccer
   while (!soccer.finished(match)) {
@@ -126,9 +158,9 @@ export function seasonSchedule(record: SeasonRecord, season: number): Fixture[] 
   const finalists = leagueTable(record, season).slice(0, 2)
   if (!finalists.some(row => row.team === 'Comets')) return regular
   const opponent = RIVALS.find(club => finalists.some(row => row.team === club.rival))!
-  const sports: Sport[] = record.mode === 'both' ? ['basketball', 'soccer'] : [record.mode]
+  const sports = seasonSports(record.mode)
   return [...regular, ...sports.map((sport, leg): Fixture => ({
-    ...opponent, sport, week: regular.at(-1)!.week + 1,
+    ...opponent, sport, week: regular.at(-1)!.week + 1 + Math.floor(leg / 2),
     seed: (2599 + record.league!.seedOffset + leg * 17) >>> 0, stage: 'final',
   }))]
 }

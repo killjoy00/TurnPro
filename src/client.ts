@@ -1,10 +1,10 @@
 import * as basketball from './basketball.ts'
 import * as soccer from './soccer.ts'
 import * as hockey from './hockey.ts'
-import { planTurn as hockeyAI } from './hockey-opponent.ts'
+import { planTurn as hockeyAI, type HockeyStyle } from './hockey-opponent.ts'
 import * as football from './football.ts'
-import { planTurn as footballAI } from './football-opponent.ts'
-import { mountGame, type SportView } from './game-view.ts'
+import { planTurn as footballAI, type FootballStyle } from './football-opponent.ts'
+import { mountGame, type SeasonMatch, type SportView } from './game-view.ts'
 import { DEFENSE_NAMES, planTurn as basketballAI, type DefenseStyle } from './opponent.ts'
 import { planTurn as soccerAI } from './soccer-opponent.ts'
 import { drawBasketball, drawFootball, drawHockey, drawSoccer } from './surfaces.ts'
@@ -119,7 +119,7 @@ const soccerView: SportView<soccer.Match, soccer.Command> = {
   },
 }
 
-function mountHockey(signal: AbortSignal) {
+function mountHockey(signal: AbortSignal, season?: SeasonMatch<hockey.Match, hockey.Command> & { style: HockeyStyle }) {
   const hockeyView: SportView<hockey.Match, hockey.Command> = {
     id: 'hockey',
     surfaceName: 'Ice rink',
@@ -145,6 +145,10 @@ function mountHockey(signal: AbortSignal) {
     preview(match, order) {
       const athlete = hockey.athleteById(match, order.athlete)
       if (order.kind === 'change') return `${hockey.reserveStamina(match, athlete.team)}% line stamina · `
+      if (order.kind === 'pass') {
+        const receiver = hockey.athleteById(match, order.target)
+        return `~${Math.round(hockey.passChance(match, athlete, receiver))}% now · `
+      }
       if (order.kind === 'shoot' || order.kind === 'one-timer') {
         const shot = hockey.shotEstimate(match, athlete, false, order.kind === 'one-timer')
         return `~${shot.goal}% goal now · `
@@ -154,7 +158,7 @@ function mountHockey(signal: AbortSignal) {
     noOrders: athlete => athlete.role === 'GK' ? 'The goalie tracks the puck and handles saves automatically.'
       : 'Recover stamina on base assignments this turn.',
     previewTarget: hockey.commandTarget,
-    opponent: hockeyAI,
+    opponent: (match, team) => hockeyAI(match, team, season?.style),
     resolveTurn: hockey.resolveTurn,
     draw: drawHockey,
     opponentDetail: match => `Line ${match.lines[1] + 1}`,
@@ -165,10 +169,10 @@ function mountHockey(signal: AbortSignal) {
       return `Period ${hockey.period(match)} · Attack ${attack}`
     },
   }
-  mountGame(hockeyView, signal)
+  mountGame(hockeyView, signal, season)
 }
 
-function mountFootball(signal: AbortSignal) {
+function mountFootball(signal: AbortSignal, season?: SeasonMatch<football.Match, football.Command> & { style: FootballStyle }) {
   const footballView: SportView<football.Match, football.Command> = {
     id: 'football',
     turnName: 'Snap',
@@ -207,7 +211,7 @@ function mountFootball(signal: AbortSignal) {
     },
     noOrders: () => 'This athlete follows their base assignment and recovers stamina on this snap.',
     previewTarget: football.commandTarget,
-    opponent: footballAI,
+    opponent: (match, team) => footballAI(match, team, season?.style),
     resolveTurn: football.resolveTurn,
     draw: drawFootball,
     clockDetail: match => `Q${football.quarter(match)} · ${football.downLabel(match)}`,
@@ -218,7 +222,7 @@ function mountFootball(signal: AbortSignal) {
       return `${teamNames(match)[match.offense]} offense · ${football.spotLabel(match.yard)} · Attack ${attack}`
     },
   }
-  mountGame(footballView, signal)
+  mountGame(footballView, signal, season)
 }
 
 const selector = document.getElementById('sport') as HTMLSelectElement
@@ -240,6 +244,9 @@ function warn(message: string) {
 
 function verifySave(raw: string) {
   const state = readClub(raw)
+  if (!TURN_PRO_FULL_PROTOTYPE && (state.mode === 'all' || state.mode === 'hockey' || state.mode === 'football')) {
+    throw new Error('This season requires the four-sport build.')
+  }
   if (state.pending) openClubFixture(state)
   return state
 }
@@ -308,7 +315,9 @@ function enterFixture() {
   changeScreen('fixture')
   const saveTurn = (orders: readonly PlanCommand[], match: MatchSnapshot) => updateClub(saveClubTurn(club!, orders, match))
   if (session.sport === 'basketball') mountGame(basketballDefense(session.defense), route.signal, { ...session, saveTurn })
-  else mountGame(soccerView, route.signal, { ...session, saveTurn })
+  else if (session.sport === 'soccer') mountGame(soccerView, route.signal, { ...session, saveTurn })
+  else if (TURN_PRO_FULL_PROTOTYPE && session.sport === 'hockey') mountHockey(route.signal, { ...session, saveTurn })
+  else if (TURN_PRO_FULL_PROTOTYPE && session.sport === 'football') mountFootball(route.signal, { ...session, saveTurn })
 }
 
 function showClub() {
@@ -337,7 +346,7 @@ function showClub() {
       const raw = await file.text()
       if (!signal.aborted) updateClub(verifySave(raw))
     },
-  }, signal)
+  }, signal, TURN_PRO_FULL_PROTOTYPE)
 }
 
 selector.addEventListener('change', () => showQuick(true))

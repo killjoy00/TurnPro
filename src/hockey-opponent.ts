@@ -1,10 +1,13 @@
 import { distance } from './math.ts'
-import { type Team } from './match.ts'
+import { COMMAND_LIMIT, type Team } from './match.ts'
 import {
   athleteById, finished, legalCommands, passChance, reserveStamina, shotEstimate, type Command, type Match,
 } from './hockey.ts'
 
-export function planTurn(match: Match, team: Team): Command[] {
+export const HOCKEY_STYLES = { balanced: 'Balanced', pressure: 'Aggressive forecheck', slot: 'Protects the slot' } as const
+export type HockeyStyle = keyof typeof HOCKEY_STYLES
+
+export function planTurn(match: Match, team: Team, style: HockeyStyle = 'balanced'): Command[] {
   if (finished(match)) return []
   const puck = athleteById(match, match.holder)
   const squad = match.athletes.filter(player => player.team === team)
@@ -13,13 +16,17 @@ export function planTurn(match: Match, team: Team): Command[] {
     distance(athleteById(match, a.athlete).position, puck.position) - distance(athleteById(match, b.athlete).position, puck.position)
 
   if (puck.team !== team) {
-    const press = available.filter(order => order.kind === 'forecheck').sort(towardPuck).slice(0, 2)
     const change = available.find(order => order.kind === 'change')
     const tired = squad.filter(player => player.slot < 5 && player.stamina < 67).length >= 2
-    const guard = available.filter(order => order.kind === 'guard' && !press.some(player => player.athlete === order.athlete))
-      .sort(towardPuck)[0]
-    const cover = change && tired && reserveStamina(match, team) > 75 ? change : guard
-    return cover ? [...press, cover] : press
+    const rotation = change && tired && reserveStamina(match, team) > 75 ? [change] : []
+    const pressLimit = style === 'pressure' ? 3 : style === 'slot' ? 1 : 2
+    const press = available.filter(order => order.kind === 'forecheck').sort(towardPuck)
+      .slice(0, Math.min(pressLimit, COMMAND_LIMIT - rotation.length))
+    if (rotation.length && style === 'balanced') return [...press, ...rotation]
+    const guardLimit = Math.min(COMMAND_LIMIT - press.length - rotation.length, style === 'slot' ? 2 : 1)
+    const guards = available.filter(order => order.kind === 'guard' && !press.some(player => player.athlete === order.athlete))
+      .sort(towardPuck).slice(0, guardLimit)
+    return [...press, ...rotation, ...guards]
   }
 
   const pass = available.filter(order => order.kind === 'pass').map(order => {

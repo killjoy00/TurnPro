@@ -6,6 +6,23 @@ export const COMMAND_LIMIT = 3
 
 export type Technique = 'thread-pass' | 'read-play' | 'clean-look' | 'second-wind'
 
+export interface AthleteBuild {
+  name: string
+  stamina: number
+  awareness: number
+  passing: number
+  finishing: number
+  defense: number
+  keeping: number
+  technique?: Technique
+}
+
+export interface Appearance {
+  slot: number
+  stamina: number
+  orders: number
+}
+
 export interface AthleteSnapshot {
   id: string
   team: Team

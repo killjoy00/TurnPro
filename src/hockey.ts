@@ -1,13 +1,13 @@
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
 import {
   COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, teamNames, validatePlans,
-  type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type Team, type TurnEvent,
+  type Appearance, type AthleteBuild, type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type Team, type TurnEvent,
 } from './match.ts'
 
 export const RINK = { width: 100, height: 48 }
 export const PERIOD_TURNS = 6
 export const TURN_LIMIT = PERIOD_TURNS * 3
-const VERSION = 1
+export const RULES_VERSION = 1
 const MID = RINK.height / 2
 const LANES = ['Left wing', 'Middle', 'Right wing'] as const
 const LINE = [
@@ -32,6 +32,7 @@ interface Skater extends AthleteSnapshot {
   speed: number
   passing: number
   finishing: number
+  keeping?: number
 }
 
 export interface Match extends MatchSnapshot {
@@ -41,6 +42,7 @@ export interface Match extends MatchSnapshot {
   athletes: Skater[]
   lines: [Line, Line]
   bench: [[number[], number[]], [number[], number[]]]
+  club?: { lineup: readonly AthleteBuild[]; orders: number[]; played: boolean[] }
 }
 
 export type Command =
@@ -93,8 +95,10 @@ function makeSkater(match: Match, team: Team, slot: number, position: Point): Sk
   return {
     id: `${team}-${slot}`, team, slot, position, role: LINE[slot][0],
     name: NAMES[team][line][slot], number: String(10 + line * 20 + slot),
-    stamina: match.bench[team][line][slot], speed: slot < 3 ? 9 - line : 7 + line,
+    speed: slot < 3 ? 9 - line : 7 + line,
     passing: slot === 0 ? 9 - line : 7, finishing: slot < 3 ? 8 - line : 6,
+    ...(team === 0 ? match.club?.lineup[line * 5 + slot] : undefined),
+    stamina: match.bench[team][line][slot],
   }
 }
 
@@ -109,22 +113,39 @@ function faceoff(match: Match, team: Team) {
   match.holder = centre.id
 }
 
-export function createMatch(seed: number, openingTeam: Team = 0): Match {
+export function createMatch(seed: number, openingTeam: Team = 0, lineup?: readonly AthleteBuild[]): Match {
   const line = () => Array<number>(5).fill(100)
   const match: Match = {
-    rulesVersion: VERSION, seed: seed >>> 0, randomState: seed >>> 0, openingTeam,
+    rulesVersion: RULES_VERSION, seed: seed >>> 0, randomState: seed >>> 0, openingTeam,
     turn: 1, holder: '', score: [0, 0], teams: ['Comets', 'Frost'],
     lines: [0, 0], bench: [[line(), line()], [line(), line()]], athletes: [],
+  }
+  if (lineup) {
+    match.club = { lineup, orders: Array<number>(11).fill(0), played: Array<boolean>(11).fill(false) }
+    match.bench[0] = [lineup.slice(0, 5).map(player => player.stamina), lineup.slice(5, 10).map(player => player.stamina)]
   }
   for (const team of [0, 1] as const) {
     for (let slot = 0; slot < 5; slot++) match.athletes.push(makeSkater(match, team, slot, { x: 0, y: 0 }))
     match.athletes.push({
       id: `${team}-5`, team, slot: 5, role: 'GK', name: team === 0 ? 'Shaw' : 'Hart',
       number: '01', position: { x: 0, y: MID }, stamina: 100, speed: 5, passing: 6, finishing: 0,
+      ...(team === 0 ? lineup?.[10] : undefined),
     })
   }
   faceoff(match, openingTeam)
   return match
+}
+
+export function clubAppearances(match: Match): Appearance[] {
+  const club = match.club
+  if (!club) return []
+  return club.played.flatMap((played, index) => {
+    if (!played) return []
+    const slot = index === 10 ? 5 : index % 5
+    const line = index < 5 ? 0 : 1
+    const stamina = slot === 5 || line === match.lines[0] ? bySlot(match, 0, slot).stamina : match.bench[0][line][slot]
+    return [{ slot: index, stamina, orders: club.orders[index] }]
+  })
 }
 
 export function createRushPractice(): Match {
@@ -223,9 +244,9 @@ export function shotEstimate(match: Match, player: Skater, screened = false, one
   const pressure = nearby(match, player, 5).filter(defender => defender.slot !== 5).length
   const keeper = bySlot(match, otherTeam(player.team), 5)
   const onTarget = clamp(92 - range * 1.4 - pressure * 9 + (player.finishing - 6) * 4
-    - Math.max(0, 70 - player.stamina) * 0.25, 15, 94)
+    - Math.max(0, 70 - player.stamina) * 0.25 + (pressure === 0 && player.technique === 'clean-look' ? 8 : 0), 15, 94)
   const save = clamp(58 + range * 0.37 - Math.abs(keeper.position.y - MID) - (screened ? 23 : 0)
-    - (oneTimer ? 15 : 0), 25, 90)
+    - (oneTimer ? 15 : 0) + ((keeper.keeping ?? 8) - 8) * 3 + (keeper.technique === 'read-play' ? 8 : 0), 25, 90)
   return { range, pressure, onTarget, save, goal: Math.round(onTarget * (100 - save) / 100) }
 }
 
@@ -236,12 +257,15 @@ function passLane(match: Match, player: Skater, receiver: Skater): Skater[] {
 }
 
 export function passChance(match: Match, player: Skater, receiver: Skater): number {
+  const blockers = passLane(match, player, receiver)
+  const read = ((player.awareness ?? 7) - 7) * 2 + (blockers.length && player.technique === 'thread-pass' ? 8 : 0)
   return clamp(106 - distance(player.position, receiver.position) * 0.7
-    - passLane(match, player, receiver).length * 15 + (player.passing - 7) * 2, 22, 98)
+    - blockers.reduce((cost, defender) => cost + 15 + (defender.defense ?? 0) + (defender.technique === 'read-play' ? 4 : 0), 0)
+    + (player.passing - 7) * 2 + read, 22, 98)
 }
 
 export function resolveTurn(match: Match, plans: Plans<Command>) {
-  if (match.rulesVersion !== VERSION) throw new Error('Unsupported hockey rules version.')
+  if (match.rulesVersion !== RULES_VERSION) throw new Error('Unsupported hockey rules version.')
   if (finished(match)) throw new Error('This match is over.')
   validatePlans(match, plans, COMMAND_LIMIT, legalCommands)
   const next = structuredClone(match)
@@ -316,7 +340,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     }
   } else {
     const pressure = nearby(next, carrier, 4).find(player => orders.get(player.id)?.kind === 'forecheck')
-    if (pressure && roll() < 37 + (100 - carrier.stamina) * 0.25) {
+    if (pressure && roll() < 37 + (100 - carrier.stamina) * 0.25 + (pressure.defense ?? 0) * 3) {
       next.holder = pressure.id
       emit('turnover', `${pressure.name} wins the puck on the forecheck.`)
     } else {
@@ -326,7 +350,13 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
 
   for (const athlete of next.athletes) {
     const order = orders.get(athlete.id)
-    athlete.stamina = clamp(athlete.stamina + (order ? -ACTIONS[order.kind].stamina : 4), 0, 100)
+    const recovery = athlete.technique === 'second-wind' ? 7 : 4
+    athlete.stamina = clamp(athlete.stamina + (order ? -ACTIONS[order.kind].stamina : recovery), 0, 100)
+    if (next.club && athlete.team === 0) {
+      const slot = athlete.slot === 5 ? 10 : next.lines[0] * 5 + athlete.slot
+      next.club.played[slot] = true
+      if (order) next.club.orders[slot] += 1
+    }
   }
   for (const team of [0, 1] as const) {
     const active = next.lines[team]

@@ -1,9 +1,21 @@
 import * as basketball from './basketball.ts'
 import * as soccer from './soccer.ts'
-import { clubAthlete, nextFixture, ratings, settleFixture, startFixture, type Club } from './club.ts'
+import * as hockey from './hockey.ts'
+import * as football from './football.ts'
+import { clubAthlete, nextFixture, ratings, settleFixture, startFixture, type Club, type Sport } from './club.ts'
 import { planTurn as basketballAI, type DefenseStyle } from './opponent.ts'
 import { planTurn as soccerAI } from './soccer-opponent.ts'
-import type { MatchSnapshot, PlanCommand, TurnEvent } from './match.ts'
+import { planTurn as hockeyAI, type HockeyStyle } from './hockey-opponent.ts'
+import { planTurn as footballAI, type FootballStyle } from './football-opponent.ts'
+import type { MatchSnapshot, PlanCommand, Plans, Team, TurnEvent } from './match.ts'
+import { TURN_LIMITS } from './league.ts'
+
+declare const TURN_PRO_FULL_PROTOTYPE: boolean
+
+const RULES: Record<Sport, number> = {
+  basketball: basketball.RULES_VERSION, soccer: soccer.RULES_VERSION,
+  hockey: hockey.RULES_VERSION, football: football.RULES_VERSION,
+}
 
 export interface LoggedTurn {
   turn: number
@@ -23,35 +35,55 @@ function applyLineup(club: Club, sport: 'basketball' | 'soccer', match: MatchSna
 export function beginClubFixture(club: Club): Club {
   const fixture = nextFixture(club)
   if (!fixture) throw new Error('This season is complete.')
-  return startFixture(club, fixture.sport === 'basketball' ? basketball.RULES_VERSION : soccer.RULES_VERSION)
+  return startFixture(club, RULES[fixture.sport])
+}
+
+function replay<S extends MatchSnapshot & { rulesVersion: number }, C extends PlanCommand>(
+  pending: NonNullable<Club['pending']>, match: S, fixedOpponent: (match: S, team: Team) => C[],
+  resolve: (match: S, plans: Plans<C>) => { match: S; events: TurnEvent[] },
+) {
+  if (pending.rules !== match.rulesVersion) throw new Error('This fixture uses a different rules version.')
+  const history: LoggedTurn[] = []
+  for (const orders of pending.turns) {
+    const next = resolve(match, [orders as C[], fixedOpponent(match, 1)])
+    history.push({ turn: match.turn, score: next.match.score, events: next.events })
+    match = next.match
+  }
+  return { match, history }
 }
 
 export function openClubFixture(club: Club):
   | { sport: 'basketball'; match: basketball.Match; defense: DefenseStyle; history: LoggedTurn[] }
-  | { sport: 'soccer'; match: soccer.Match; history: LoggedTurn[] } {
+  | { sport: 'soccer'; match: soccer.Match; history: LoggedTurn[] }
+  | { sport: 'hockey'; match: hockey.Match; style: HockeyStyle; history: LoggedTurn[] }
+  | { sport: 'football'; match: football.Match; style: FootballStyle; history: LoggedTurn[] } {
   const fixture = nextFixture(club)
   if (!fixture || !club.pending) throw new Error('Start your fixture first.')
-  const history: LoggedTurn[] = []
   if (fixture.sport === 'basketball') {
-    let match = basketball.createMatch(fixture.seed)
-    if (club.pending.rules !== match.rulesVersion) throw new Error('This fixture uses a different basketball rules version.')
+    const match = basketball.createMatch(fixture.seed)
     applyLineup(club, 'basketball', match, fixture.rival)
-    for (const orders of club.pending.turns) {
-      const next = basketball.resolveTurn(match, [orders as basketball.Command[], basketballAI(match, 1, fixture.basketball)])
-      history.push({ turn: match.turn, score: next.match.score, events: next.events })
-      match = next.match
+    return { sport: 'basketball', defense: fixture.basketball,
+      ...replay(club.pending, match, (state, team) => basketballAI(state, team, fixture.basketball), basketball.resolveTurn) }
+  }
+  if (fixture.sport === 'soccer') {
+    const match = soccer.createMatch(fixture.seed, 0, 3, fixture.soccer)
+    applyLineup(club, 'soccer', match, fixture.rival)
+    return { sport: 'soccer', ...replay(club.pending, match, soccerAI, soccer.resolveTurn) }
+  }
+  if (typeof TURN_PRO_FULL_PROTOTYPE === 'undefined' || TURN_PRO_FULL_PROTOTYPE) {
+    const lineup = club.lineups[fixture.sport].map(id => ratings(clubAthlete(club, id), fixture.sport))
+    if (fixture.sport === 'hockey') {
+      const match = hockey.createMatch(fixture.seed, 0, lineup)
+      match.teams = ['Comets', fixture.rival]
+      return { sport: 'hockey', style: fixture.hockey,
+        ...replay(club.pending, match, (state, team) => hockeyAI(state, team, fixture.hockey), hockey.resolveTurn) }
     }
-    return { sport: 'basketball', match, defense: fixture.basketball, history }
+    const match = football.createMatch(fixture.seed, 0, lineup)
+    match.teams = ['Comets', fixture.rival]
+    return { sport: 'football', style: fixture.football,
+      ...replay(club.pending, match, (state, team) => footballAI(state, team, fixture.football), football.resolveTurn) }
   }
-  let match = soccer.createMatch(fixture.seed, 0, 3, fixture.soccer)
-  if (club.pending.rules !== match.rulesVersion) throw new Error('This fixture uses a different soccer rules version.')
-  applyLineup(club, 'soccer', match, fixture.rival)
-  for (const orders of club.pending.turns) {
-    const next = soccer.resolveTurn(match, [orders as soccer.Command[], soccerAI(match, 1)])
-    history.push({ turn: match.turn, score: next.match.score, events: next.events })
-    match = next.match
-  }
-  return { sport: 'soccer', match, history }
+  throw new Error('This fixture requires the four-sport build.')
 }
 
 export function saveClubTurn(club: Club, orders: readonly PlanCommand[], match: MatchSnapshot): Club {
@@ -61,6 +93,10 @@ export function saveClubTurn(club: Club, orders: readonly PlanCommand[], match: 
     throw new Error('The fixture changed before this turn could be saved.')
   }
   const next = { ...club, pending: { ...pending, turns: [...pending.turns, [...orders]] } }
-  const limit = fixture.sport === 'basketball' ? basketball.TURN_LIMIT : soccer.TURN_LIMIT
-  return match.turn > limit ? settleFixture(next, match.score, match.athletes) : next
+  if (match.turn <= TURN_LIMITS[fixture.sport]) return next
+  if (typeof TURN_PRO_FULL_PROTOTYPE === 'undefined' || TURN_PRO_FULL_PROTOTYPE) {
+    if (fixture.sport === 'hockey') return settleFixture(next, match.score, match.athletes, hockey.clubAppearances(match as hockey.Match))
+    if (fixture.sport === 'football') return settleFixture(next, match.score, match.athletes, football.clubAppearances(match as football.Match))
+  }
+  return settleFixture(next, match.score, match.athletes)
 }

@@ -19,6 +19,7 @@ try {
   assert.equal(await page.locator('html').getAttribute('data-contrast'), 'high')
   assert.equal(await page.locator('html').getAttribute('data-text-size'), 'extra')
   await page.getByRole('button', { name: 'Club season' }).click()
+  assert.equal(await page.getByRole('button', { name: 'All four sports · 12 fixtures' }).count(), 0)
   await page.getByRole('button', { name: 'Both sports · 6 fixtures' }).click()
   assert.match(await page.locator('.club-hero').innerText(), /Season 1/)
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 1280)

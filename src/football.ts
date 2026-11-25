@@ -1,13 +1,13 @@
 import { clamp, seededRandom, type Point } from './math.ts'
 import {
   COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, teamNames, validatePlans,
-  type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type Team, type TurnEvent,
+  type Appearance, type AthleteBuild, type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type Team, type TurnEvent,
 } from './match.ts'
 
 export const FIELD = { width: 120, height: 54, goal: 10 }
 export const QUARTER_SNAPS = 6
 export const TURN_LIMIT = QUARTER_SNAPS * 4
-const VERSION = 1
+export const RULES_VERSION = 1
 const RECEIVERS = [7, 8, 9, 10]
 const OFFENSE = [
   ['QB', '8', 'Reed', 'Quinn', -5, 27], ['RB', '22', 'Imani', 'Park', -8, 31],
@@ -17,6 +17,7 @@ const OFFENSE = [
   ['WR', '81', 'Okafor', 'Grant', -1, 47], ['WR', '15', 'Ito', 'Silva', -2.5, 12],
   ['TE', '87', 'Adeyemi', 'Lane', -2.5, 41],
 ] as const
+const DEFENSE_LINEUP = [2, 3, 5, 6, 4, 1, 10, 7, 8, 0, 9] as const
 const DEFENSE = [
   ['DE', '94', 'Brooks', 'Pike', 3, 16], ['DT', '98', 'Ellis', 'Jensen', 3, 24],
   ['DT', '95', 'Holt', 'Mills', 3, 31], ['DE', '91', 'Patel', 'Solis', 3, 39],
@@ -29,6 +30,8 @@ const DEFENSE = [
 type Unit = 'o' | 'd'
 interface Player extends AthleteSnapshot {
   slot: number
+  passing?: number
+  finishing?: number
 }
 
 export interface Match extends MatchSnapshot {
@@ -41,6 +44,7 @@ export interface Match extends MatchSnapshot {
   down: number
   athletes: Player[]
   energy: [{ o: number[]; d: number[] }, { o: number[]; d: number[] }]
+  club?: { lineup: readonly AthleteBuild[]; orders: number[] }
 }
 
 export type Play =
@@ -106,7 +110,9 @@ function align(match: Match) {
     return (unit === 'o' ? OFFENSE : DEFENSE).map(([role, number, home, away, offset, lane], slot) => ({
       id: `${team}-${unit}-${slot}`, team, number, role, slot, name: team === 0 ? home : away,
       position: orient(match, clamp(match.yard + offset, -8, 108), lane),
-      stamina: match.energy[team][unit][slot],
+      ...(team === 0 ? match.club?.lineup[unit === 'o' ? slot : DEFENSE_LINEUP[slot]] : undefined),
+      stamina: team === 0 && match.club ? match.energy[0].o[unit === 'o' ? slot : DEFENSE_LINEUP[slot]]
+        : match.energy[team][unit][slot],
     }))
   })
   match.holder = `${match.offense}-o-0`
@@ -119,16 +125,24 @@ function startDrive(match: Match, team: Team, yard: number) {
   match.sticks = Math.min(100, match.yard + 10)
 }
 
-export function createMatch(seed: number, openingTeam: Team = 0): Match {
+export function createMatch(seed: number, openingTeam: Team = 0, lineup?: readonly AthleteBuild[]): Match {
   const unit = () => Array<number>(11).fill(100)
   const match: Match = {
-    rulesVersion: VERSION, randomState: seed >>> 0, seed: seed >>> 0, turn: 1,
+    rulesVersion: RULES_VERSION, randomState: seed >>> 0, seed: seed >>> 0, turn: 1,
     score: [0, 0], teams: ['Comets', 'Sentinels'], openingTeam, holder: '', athletes: [],
     offense: openingTeam, yard: 25, sticks: 35, down: 1,
     energy: [{ o: unit(), d: unit() }, { o: unit(), d: unit() }],
   }
+  if (lineup) {
+    match.club = { lineup, orders: Array<number>(11).fill(0) }
+    match.energy[0].o = lineup.map(player => player.stamina)
+  }
   align(match)
   return match
+}
+
+export function clubAppearances(match: Match): Appearance[] {
+  return match.club?.orders.map((orders, slot) => ({ slot, stamina: match.energy[0].o[slot], orders })) ?? []
 }
 
 export function createThirdDownPractice(): Match {
@@ -228,13 +242,17 @@ export function playEstimate(match: Match, play: Play, offense: readonly Command
     const lane = OFFENSE[receiver.slot][5]
     const coverage = defense.filter(order => order.kind === (deep ? 'cover-deep' : 'cover-short')).reduce((sum, order) => {
       const defender = findAthlete(match.athletes, order.athlete)
-      return sum + (Math.abs(DEFENSE[defender.slot][5] - lane) <= 17 ? 1 : 0.5)
+      const technique = defender.technique === 'read-play' ? 0.4 : 0
+      return sum + (Math.abs(DEFENSE[defender.slot][5] - lane) <= 17 ? 1 : 0.5) + (defender.defense ?? 0) * 0.1 + technique
     }, 0)
     const pressure = Math.max(0, rush + (deep ? 1 : 0) - blocks)
     const fit = deep ? route === 'go' : route === 'slant'
     const fatigue = Math.max(0, 70 - Math.min(receiver.stamina, passer.stamina)) * 0.32
+    const talent = ((passer.passing ?? 7) - 7) * 2 + ((passer.awareness ?? 7) - 7) * 1.7 + ((receiver.finishing ?? 7) - 7) * 1.5
+    const matchup = (coverage > 0 && passer.technique === 'thread-pass' ? 7 : 0)
+      + (coverage === 0 && receiver.technique === 'clean-look' ? 7 : 0)
     return {
-      chance: Math.round(clamp((deep ? 56 : 74) + (fit ? 13 : 0) - pressure * 9 - coverage * 12 - fatigue, 20, 94)),
+      chance: Math.round(clamp((deep ? 56 : 74) + (fit ? 13 : 0) - pressure * 9 - coverage * 12 - fatigue + talent + matchup, 20, 94)),
       yards: routeReach(play.kind, route), sack: clamp((deep ? 7 : 3) + pressure * 7 - blocks * 2, 2, 35),
       pick: clamp((deep ? 15 : 7) + coverage * 14 + pressure * 5, 4, 52),
     }
@@ -247,19 +265,21 @@ export function playEstimate(match: Match, play: Play, offense: readonly Command
   const lane = laneFor(play.kind)
   const gap = defense.filter(order => order.kind === 'fill').reduce((sum, order) => {
     const defender = findAthlete(match.athletes, order.athlete)
-    return sum + (Math.abs(DEFENSE[defender.slot][5] - lane) <= 10 ? 2.8 : 0.6)
+    return sum + (Math.abs(DEFENSE[defender.slot][5] - lane) <= 10 ? 2.8 + (defender.defense ?? 0) * 0.3
+      + (defender.technique === 'read-play' ? 0.8 : 0) : 0.6)
   }, 0)
   const lead = offense.filter(order => order.kind === 'run-block').reduce((sum, order) => {
     const blocker = findAthlete(match.athletes, order.athlete)
     return sum + (Math.abs(OFFENSE[blocker.slot][5] - lane) <= 11 ? 1.8 : 0.9)
   }, 0)
   const fatigue = Math.max(0, 65 - runner.stamina) * 0.085
-  return { chance: 100, yards: Math.round(clamp(4 + lead - gap - fatigue + (play.kind === 'inside' ? -rush * 0.8 : rush * 0.55), -5, 12)),
+  const running = ((runner.finishing ?? 7) - 7) * 0.55
+  return { chance: 100, yards: Math.round(clamp(4 + running + lead - gap - fatigue + (play.kind === 'inside' ? -rush * 0.8 : rush * 0.55), -5, 12)),
     sack: 0, pick: 0 }
 }
 
 export function resolveTurn(match: Match, plans: Plans<Command>) {
-  if (match.rulesVersion !== VERSION) throw new Error('Unsupported football rules version.')
+  if (match.rulesVersion !== RULES_VERSION) throw new Error('Unsupported football rules version.')
   if (finished(match)) throw new Error('This game is over.')
   validatePlans(match, plans, COMMAND_LIMIT, legalCommands)
   const next = structuredClone(match)
@@ -281,10 +301,19 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     const order = orders.get(player.id)
     const unit = player.team === attack ? 'o' : 'd'
     const carryCost = unit === 'o' && player.slot === 1 && ['inside', 'sweep-left', 'sweep-right'].includes(play.kind) ? 8 : 0
-    const cost = (order ? ACTIONS[order.kind].stamina : -4) + carryCost
-    next.energy[player.team][unit][player.slot] = clamp(player.stamina - cost, 0, 100)
+    const recovery = player.technique === 'second-wind' ? 7 : 4
+    const cost = (order ? ACTIONS[order.kind].stamina : -recovery) + carryCost
+    const stamina = clamp(player.stamina - cost, 0, 100)
+    if (player.team === 0 && next.club) {
+      const slot = unit === 'o' ? player.slot : DEFENSE_LINEUP[player.slot]
+      next.energy[0].o[slot] = stamina
+      if (order) next.club.orders[slot] += 1
+    } else {
+      next.energy[player.team][unit][player.slot] = stamina
+    }
   }
   for (const team of [0, 1] as const) {
+    if (team === 0 && next.club) continue
     const idle = team === attack ? 'd' : 'o'
     next.energy[team][idle] = next.energy[team][idle].map(stamina => Math.min(100, stamina + 9))
   }
