@@ -231,7 +231,8 @@ const clubNav = document.getElementById('club-nav') as HTMLButtonElement
 const clubScreen = document.getElementById('club-screen')!
 const matchScreen = document.getElementById('match-screen')!
 const warning = document.getElementById('save-warning')!
-const key = 'turn-pro-club-v1'
+const prototypeKey = 'turn-pro-club-v1'
+const key = TURN_PRO_FULL_PROTOTYPE ? prototypeKey : 'turn-pro-steam-preview-club-v1'
 let screen: 'quick' | 'club' | 'fixture' = 'quick'
 let route = new AbortController()
 let club: Club | null = null
@@ -242,18 +243,26 @@ function warn(message: string) {
   warning.textContent = message
 }
 
-function verifySave(raw: string) {
-  const state = readClub(raw)
-  if (!TURN_PRO_FULL_PROTOTYPE && (state.mode === 'all' || state.mode === 'hockey' || state.mode === 'football')) {
-    throw new Error('This season requires the four-sport build.')
-  }
+function supportsSeason(state: Club) {
+  return TURN_PRO_FULL_PROTOTYPE || state.mode === 'both' || state.mode === 'basketball' || state.mode === 'soccer'
+}
+
+function verifyClub(state: Club) {
+  if (!supportsSeason(state)) throw new Error('This season requires the four-sport build.')
   if (state.pending) openClubFixture(state)
   return state
 }
 
 try {
   lastSaved = localStorage.getItem(key)
-  if (lastSaved) club = verifySave(lastSaved)
+  if (lastSaved) club = verifyClub(readClub(lastSaved))
+  else if (!TURN_PRO_FULL_PROTOTYPE) {
+    const previous = localStorage.getItem(prototypeKey)
+    if (previous) {
+      const state = readClub(previous)
+      if (supportsSeason(state)) club = verifyClub(state)
+    }
+  }
 } catch {
   warn('Could not open the local club save. You can import an earlier export from the club screen.')
 }
@@ -344,7 +353,7 @@ function showClub() {
     async importSave(file) {
       if (file.size > 128_000) throw new Error('Invalid club save.')
       const raw = await file.text()
-      if (!signal.aborted) updateClub(verifySave(raw))
+      if (!signal.aborted) updateClub(verifyClub(readClub(raw)))
     },
   }, signal, TURN_PRO_FULL_PROTOTYPE)
 }

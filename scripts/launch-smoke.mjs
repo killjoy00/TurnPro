@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
+import { createClub } from '../src/club.ts'
 
 const browser = await chromium.launch()
 try {
@@ -7,6 +8,8 @@ try {
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
   await page.goto(new URL('../dist/turn-pro-launch.html', import.meta.url).href)
+  const fullCareer = JSON.stringify(createClub('all'))
+  await page.evaluate(raw => localStorage.setItem('turn-pro-club-v1', raw), fullCareer)
   assert.deepEqual(await page.locator('#sport option').evaluateAll(options => options.map(option => option.value)),
     ['basketball', 'soccer'])
   await page.getByRole('button', { name: 'Controls', exact: true }).click()
@@ -26,8 +29,16 @@ try {
   await page.getByRole('button', { name: 'Play fixture' }).click()
   await page.getByRole('button', { name: 'Commit turn' }).click()
   assert.match(await page.locator('.turn-clock').innerText(), /Turn 2/i)
+  assert.equal(await page.evaluate(() => localStorage.getItem('turn-pro-club-v1')), fullCareer)
+  await page.evaluate(raw => {
+    localStorage.removeItem('turn-pro-steam-preview-club-v1')
+    localStorage.setItem('turn-pro-club-v1', raw)
+  }, JSON.stringify(createClub('soccer')))
+  await page.reload()
+  await page.getByRole('button', { name: 'Club season' }).click()
+  assert.match(await page.locator('.club-hero').innerText(), /Soccer vs Forge/)
   assert.deepEqual(errors, [])
-  console.log('Two-sport launch, club play and persistent display settings passed at 1280×800.')
+  console.log('Two-sport launch, save isolation, and persistent display settings passed at 1280×800.')
 } finally {
   await browser.close()
 }
