@@ -5,6 +5,9 @@ import {
 import type { Point } from './math.ts'
 import { TECHNIQUES } from './club.ts'
 import type { LoggedTurn } from './club-fixture.ts'
+import { trackMatch } from './playtest.ts'
+
+declare const TURN_PRO_FULL_PROTOTYPE: boolean
 
 export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
   id: 'basketball' | 'soccer' | 'hockey' | 'football'
@@ -78,6 +81,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   const portrait = matchMedia('(max-width: 560px)')
   const isPortrait = () => sport.id !== 'basketball' && portrait.matches
   let match = season?.match ?? sport.create(2026, nextBudget())
+  let track = TURN_PRO_FULL_PROTOTYPE ? trackMatch(sport.id, season ? 'club fixture' : 'quick match') : undefined
   let selected = selectPlayer()
   let plan: C[] = []
   const teams = teamNames(match)
@@ -172,7 +176,8 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     budget.textContent = `${plan.length} / ${sport.limit(match)} commands`
     orders.innerHTML = plan.length ? `<ul>${plan.map(command => {
       const athlete = findAthlete(match.athletes, command.athlete)
-      return `<li><span><strong>${athlete.name}</strong> · ${sport.label(match, command)}</span>
+      const detail = sport.preview(match, command, plan).replace(/ · $/, '')
+      return `<li><span><strong>${athlete.name}</strong> · ${sport.label(match, command)}${detail ? `<small>${detail}</small>` : ''}</span>
         <button type="button" class="remove" data-remove="${athlete.id}" aria-label="Remove ${athlete.name}'s command">×</button></li>`
     }).join('')}</ul>` : ''
 
@@ -254,14 +259,14 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   }, { signal })
 
   function recordTurn(turn: number, events: TurnEvent[], score = match.score) {
-    const important = events.find(event => event.kind === 'finish')
-      ?? events.find(event => event.kind === 'score')
-      ?? events.find(event => event.kind === 'save')
+    const important = events.find(event => event.kind === 'score')
       ?? events.find(event => event.kind === 'turnover')
-      ?? events.find(event => event.kind === 'possession')
+      ?? events.find(event => event.kind === 'save')
       ?? events.find(event => event.kind === 'rebound')
-      ?? events.find(event => event.kind === 'restart')
       ?? events.find(event => event.kind === 'ball')
+      ?? events.find(event => event.kind === 'possession')
+      ?? events.find(event => event.kind === 'restart')
+      ?? events.find(event => event.kind === 'finish')
       ?? events.find(event => event.kind === 'movement')
     const message = important?.text ?? 'Both teams adjust their positions.'
     summary.textContent = `${turnName} ${turn} · ${message}`
@@ -269,7 +274,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     const detail = document.createElement('details')
     detail.className = 'turn'
     detail.open = true
-    detail.innerHTML = `<summary>${turnName} ${turn} · ${score.join('–')}</summary>
+    detail.innerHTML = `<summary>${turnName} ${turn} · ${score.join('–')}<small>${message}</small></summary>
       <ul class="timeline">${events.map(event => `<li class="${event.kind}">${event.text}</li>`).join('')}</ul>`
     turns.prepend(detail)
   }
@@ -281,9 +286,11 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     const resolution = sport.resolveTurn(match, [plan, opponent])
     season?.saveTurn(plan, resolution.match)
     match = resolution.match
+    track?.(turn, match.score, Boolean(steps.length) || match.turn > sport.turnLimit)
     if (steps.length) {
       steps = []
       coached = true
+      if (TURN_PRO_FULL_PROTOTYPE) track = trackMatch(sport.id, 'quick match')
     }
     plan = []
     selected = selectPlayer()
@@ -296,6 +303,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     steps = practiceSteps
     coached = false
     match = next
+    if (TURN_PRO_FULL_PROTOTYPE) track = trackMatch(sport.id, practiceSteps.length ? 'practice' : 'quick match')
     selected = selectPlayer()
     plan = []
     turns.replaceChildren()

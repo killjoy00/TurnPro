@@ -139,3 +139,17 @@ test('a version 3 club resumes the same saved fixture with new development initi
   assert.deepEqual(openClubFixture(migrated), openClubFixture(club))
   assert.deepEqual(migrated, club)
 })
+
+test('in-progress soccer and football fixtures retain their previous rules after tuning', () => {
+  for (const [sport, rules, opponent] of [['soccer', soccer, soccerAI], ['football', football, footballAI]]) {
+    const club = beginClubFixture(createClub(sport))
+    club.pending.rules = rules.PREVIOUS_RULES_VERSION
+    const session = openClubFixture(club)
+    const plan = opponent(session.match, 0)
+    const played = rules.resolveTurn(session.match, [plan, opponent(session.match, 1, session.style)])
+    const resumed = openClubFixture(readClub(JSON.stringify(saveClubTurn(club, plan, played.match))))
+    assert.equal(resumed.match.rulesVersion, rules.PREVIOUS_RULES_VERSION)
+    assert.deepEqual(resumed.match, played.match)
+    assert.deepEqual(resumed.history[0].events, played.events)
+  }
+})

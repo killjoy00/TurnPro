@@ -7,7 +7,8 @@ import {
 export const PITCH = { width: 105, length: 68 }
 export const HALF_TURNS = 9
 export const TURN_LIMIT = HALF_TURNS * 2
-export const RULES_VERSION = 2
+export const PREVIOUS_RULES_VERSION = 2
+export const RULES_VERSION = 3
 const MIDFIELD = { x: PITCH.width / 2, y: PITCH.length / 2 }
 const SHOT_RANGE = 32
 
@@ -346,7 +347,7 @@ function resolvePass(
 }
 
 export function resolveTurn(match: Match, plans: Plans<Command>) {
-  if (match.rulesVersion !== RULES_VERSION) throw new Error('Unsupported rules version.')
+  if (match.rulesVersion !== RULES_VERSION && match.rulesVersion !== PREVIOUS_RULES_VERSION) throw new Error('Unsupported rules version.')
   if (finished(match)) throw new Error('This match is over.')
   validatePlans(match, plans, match.commandLimit, legalCommands)
 

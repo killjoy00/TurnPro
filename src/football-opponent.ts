@@ -1,6 +1,6 @@
 import { COMMAND_LIMIT, otherTeam, type Team } from './match.ts'
 import { clamp } from './math.ts'
-import { finished, legalCommands, playEstimate, TURN_LIMIT, type Command, type Match, type Play } from './football.ts'
+import { finished, legalCommands, playEstimate, PREVIOUS_RULES_VERSION, TURN_LIMIT, type Command, type Match, type Play } from './football.ts'
 
 export const FOOTBALL_STYLES = { balanced: 'Situational defense', pressure: 'Blitz-heavy', shell: 'Deep coverage' } as const
 export type FootballStyle = keyof typeof FOOTBALL_STYLES
@@ -28,8 +28,12 @@ export function planTurn(match: Match, team: Team, style: FootballStyle = 'balan
   const calls = options.filter((order): order is Play => order.athlete === match.holder)
   const fieldGoal = calls.find(play => play.kind === 'field-goal')
   const punt = calls.find(play => play.kind === 'punt')
-  const trailing = match.score[team] < match.score[otherTeam(team)]
-  const urgent = match.turn >= TURN_LIMIT - 3 && trailing
+  const deficit = match.score[otherTeam(team)] - match.score[team]
+  const late = match.turn >= TURN_LIMIT - 3
+  const urgent = late && deficit > 0
+  if (match.rulesVersion !== PREVIOUS_RULES_VERSION && fieldGoal && late && deficit >= 1 && deficit <= 3) {
+    return [fieldGoal]
+  }
   if (fieldGoal && !urgent && (needed > 3 || match.turn >= TURN_LIMIT - 1)) return [fieldGoal]
   if (punt && !fieldGoal && !urgent && (needed > 2 || match.yard < 50)) return [punt]
 

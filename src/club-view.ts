@@ -125,6 +125,12 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       soccer: SHAPE_NAMES[fixture.soccer], basketball: DEFENSE_NAMES[fixture.basketball],
       hockey: HOCKEY_STYLES[fixture.hockey], football: FOOTBALL_STYLES[fixture.football],
     }[fixture.sport]
+    const startingStamina = fixture && !club.pending ? club.lineups[fixture.sport]
+      .filter((_, slot) => fixture.sport !== 'hockey' || slot < 5 || slot === keeperSlot('hockey'))
+      .map(id => ratings(clubAthlete(club, id), fixture.sport).stamina) : []
+    const averageStamina = startingStamina.length
+      ? Math.round(startingStamina.reduce((sum, stamina) => sum + stamina, 0) / startingStamina.length) : 0
+    const tired = startingStamina.filter(stamina => stamina < 65).length
 
     const leaguePanel = standings ? `<section class="club-panel"><h3>League standings</h3>
       <p class="muted league-rule">Top two reach the final. Ties in the final favor the higher seed.</p>
@@ -155,6 +161,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       <p><b>Season ${club.season} · ${headline}</b>${opponent ? ` · ${opponent}` : ''}</p>
       ${outcome && outcome !== 'Finished' ? `<p class="league-outcome"><b>${outcome}</b>${rank ? ` · League rank ${rank}` : ''}</p>` : ''}
       <p class="season-record">${wins} wins · ${draws} draws · ${losses} losses · ${wins * 3 + draws} league points${titles ? ` · ${titles} ${titles === 1 ? 'title' : 'titles'}` : ''}</p>
+      ${startingStamina.length ? `<p class="muted club-readiness">Next lineup · Avg stamina ${averageStamina} · ${tired} of ${startingStamina.length} below 65</p>` : ''}
       <div class="club-actions">${fixture ? `<button class="primary" data-action="play">${club.pending ? 'Resume fixture' : 'Play fixture'}</button>`
         : '<button data-action="new">Start another season</button>'}</div>
     </section>

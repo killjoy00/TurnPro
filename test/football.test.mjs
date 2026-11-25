@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createMatch, createThirdDownPractice, direction, downLabel, fieldLines,
-  finished, legalCommands, playEstimate, resolveTurn, TURN_LIMIT,
+  finished, legalCommands, playEstimate, resolveTurn, PREVIOUS_RULES_VERSION, TURN_LIMIT,
 } from '../src/football.ts'
 import { planTurn } from '../src/football-opponent.ts'
 
@@ -71,6 +71,13 @@ test('fourth down supports turnovers on downs, punts, and field goals in range',
   assert.deepEqual(made.match.score, [3, 0])
   assert.equal(made.match.yard, 25)
   assert.equal(made.match.offense, 1)
+})
+
+test('a late fourth down uses a field goal if three points can tie or take the lead', () => {
+  const game = { ...createMatch(27), turn: TURN_LIMIT, down: 4, yard: 80, sticks: 87, score: [14, 17] }
+  assert.equal(planTurn(game, 0)[0].kind, 'field-goal')
+  assert.notEqual(planTurn({ ...game, rulesVersion: PREVIOUS_RULES_VERSION }, 0)[0].kind, 'field-goal')
+  assert.notEqual(planTurn({ ...game, score: [14, 18] }, 0)[0].kind, 'field-goal')
 })
 
 test('full seeded football games replay identically across quarters and possession changes', () => {

@@ -79,7 +79,7 @@ test('older saves fill in already played league rounds and preserve completed se
   const previous = { ...rest, version: 2, results: initial }
   const upgraded = readClub(JSON.stringify(previous))
   assert.deepEqual(upgraded.results, initial)
-  assert.deepEqual(upgraded.league.otherResults, schedule('both').slice(0, 5).map(simulateRivals))
+  assert.deepEqual(upgraded.league.otherResults, schedule('both').slice(0, 5).map(fixture => simulateRivals(fixture, { rulesVersion: 2 })))
   assert.equal(nextFixture(upgraded).seed, 2061)
   const finished = readClub(JSON.stringify({ ...rest, version: 2 }))
   assert.equal(finished.league, null)

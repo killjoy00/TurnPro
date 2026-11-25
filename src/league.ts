@@ -73,7 +73,7 @@ export function rivalPair(fixture: Fixture): readonly [Rival, Rival] {
   return [home.rival, away.rival]
 }
 
-export function simulateRivals(fixture: Fixture): Score {
+export function simulateRivals(fixture: Fixture, options?: { rulesVersion: number }): Score {
   const [home, away] = RIVALS.filter(club => club.rival !== fixture.rival)
   const seed = (fixture.seed + 4127) >>> 0
   const openingTeam = (seed % 2) as 0 | 1
@@ -94,12 +94,14 @@ export function simulateRivals(fixture: Fixture): Score {
     }
     if (fixture.sport === 'football') {
       let match = football.createMatch(seed, openingTeam)
+      if (options?.rulesVersion === football.PREVIOUS_RULES_VERSION) match.rulesVersion = football.PREVIOUS_RULES_VERSION
       while (!football.finished(match)) match = football.resolveTurn(match, [footballAI(match, 0, home.football), footballAI(match, 1, away.football)]).match
       return match.score
     }
   }
   if (fixture.sport !== 'soccer') throw new Error('This fixture requires the four-sport build.')
   let match = soccer.createMatch(seed, openingTeam, 3, away.soccer)
+  if (options?.rulesVersion === soccer.PREVIOUS_RULES_VERSION) match.rulesVersion = soccer.PREVIOUS_RULES_VERSION
   match.shapes[0] = home.soccer
   while (!soccer.finished(match)) {
     match = soccer.resolveTurn(match, [soccerAI(match, 0), soccerAI(match, 1)]).match
