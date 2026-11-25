@@ -1,6 +1,7 @@
 import { RINK } from './hockey.ts'
 import { COURT } from './basketball.ts'
 import { PITCH } from './soccer.ts'
+import { FIELD, fieldLines, type Match as FootballMatch } from './football.ts'
 
 export function drawBasketball(context: CanvasRenderingContext2D) {
   context.fillStyle = '#d8bb88'
@@ -103,6 +104,47 @@ export function drawHockey(context: CanvasRenderingContext2D) {
     context.lineWidth = 0.27
     context.beginPath()
     context.arc(x, y, radius, 0, Math.PI * 2)
+    context.stroke()
+  }
+}
+
+export function drawFootball(context: CanvasRenderingContext2D, match: FootballMatch) {
+  const { width, height, goal } = FIELD
+  context.fillStyle = '#285943'
+  context.fillRect(0, 0, width, height)
+  context.fillStyle = '#213d48'
+  context.fillRect(0, 0, goal, height)
+  context.fillStyle = '#50392e'
+  context.fillRect(width - goal, 0, goal, height)
+  context.strokeStyle = '#dfead7'
+  context.lineWidth = 0.3
+  context.strokeRect(0.4, 0.4, width - 0.8, height - 0.8)
+  for (let x = goal; x <= width - goal; x += 5) {
+    if (x % 20 === 10 && x < width - goal) {
+      context.fillStyle = '#ffffff0b'
+      context.fillRect(x, 0, 10, height)
+    }
+    if (x % 10 === 0) {
+      context.beginPath()
+      for (const lane of [21, 33]) {
+        context.moveTo(x, lane - 0.55)
+        context.lineTo(x, lane + 0.55)
+      }
+      context.stroke()
+    } else {
+      context.beginPath()
+      context.moveTo(x, 0)
+      context.lineTo(x, height)
+      context.stroke()
+    }
+  }
+  const lines = fieldLines(match)
+  context.lineWidth = 0.7
+  for (const [x, color] of [[lines.scrimmage, '#a6dfff'], [lines.firstDown, '#f8d87c']] as const) {
+    context.beginPath()
+    context.strokeStyle = color
+    context.moveTo(x, 0)
+    context.lineTo(x, height)
     context.stroke()
   }
 }

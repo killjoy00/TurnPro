@@ -2,7 +2,20 @@
 
 Turn Pro is a turn-based tactical sports RPG. Build a club of fictional athletes, develop distinct specialties, and use them together in recognizable team sports. Each match is a tactical encounter shaped by spacing, assignments, stamina, and the opponent's decisions.
 
-Steam and Steam Deck are the first commercial targets. The first paid release requires full-sided basketball and soccer. Ice hockey and American football are planned expansions of the same design. Mobile and web are later distribution options. The browser is the first playtest platform.
+The prototype is one offline game with four playable sports: basketball, soccer, ice hockey, and American football. The game should make it easy to move from a complete match in one sport to a complete match in another and see which tactical ideas carry over. The same prototype is available as an offline browser file and as Windows and Linux desktop packages.
+
+## Prototype completion
+
+The prototype is complete when the same packaged build meets these gates:
+
+| Gate | Evidence |
+| --- | --- |
+| All four sports in one game | The sport menu opens basketball, soccer, ice hockey, and American football in the same running app. Each starts a full-sided match against the computer, accepts legal orders, reaches a final score, and can be replayed or switched to another sport. |
+| One coached tactic per sport | Complete a basketball kick-out, a soccer through ball or cross, a screened hockey one-timer, and a football third-down conversion. Each turn log explains how the orders changed the play. |
+| Club development and continuity | Develop an athlete and complete a basketball-and-soccer club season. Reload an active fixture and preserve its lineup, training, result, and committed turns. Hockey and American football enter the prototype as quick matches. |
+| Downloadable, testable builds | Automated checks complete all four sports from the same browser file. The Windows and Linux packages each expose all four sports, launch a four-sport match session, and restore a club save. Try the same builds with touch, keyboard, and a controller during playtesting. |
+
+Use these builds for a round of four-sport human playtesting. Collect completion time, confusion about what an order will do, whether the player can explain a decisive play, and whether they choose to play another match. Use the results to prioritize tactical tuning and decide when to bring hockey and football into club progression.
 
 ## What players do
 
@@ -38,7 +51,7 @@ An athlete has an identity, physical profile, tendencies, strengths, fatigue, an
 
 Specialties offer distinct tools and tradeoffs. Start by testing Playmaker, Defender, and Finisher builds with active, passive, or reaction choices that change decisions on the court. Later candidates include Speedster, Technician, Enforcer, Strategist, Captain, Ironman, and All-Rounder. A player might combine a Playmaker's passing options with a Defender's off-ball reaction while giving up a second scoring ability. The first shared progression experiment should demonstrate one athlete bringing a useful universal trait into soccer with a lower independent soccer skill level.
 
-The career grows from a modest roster through recruitment, training, lineups, recovery, competitions, and rival clubs. Distinct opponents should invite tactical adaptation. A possession-focused soccer rival demands a different plan from a transition-heavy one. Shared training resources and scheduling make specialists and generalists valuable in different situations. Multi-sport tournaments and overall club standings can follow once the two launch sports and career loop work individually.
+The career grows from a modest roster through recruitment, training, lineups, recovery, competitions, and rival clubs. Distinct opponents should invite tactical adaptation. A possession-focused soccer rival demands a different plan from a transition-heavy one. Shared training resources and scheduling make specialists and generalists valuable in different situations. The prototype's two-sport league and championship test those decisions. Four-sport careers need evidence that the additional sports make roster choices more interesting.
 
 ## Competitive play and pacing
 
@@ -89,6 +102,16 @@ Quick matches and club rivals test explicit tactical responses. High-press socce
 
 The club season playtest succeeds when a player can change an attacking plan against a different defense, sign and develop an athlete, and finish and reload a season. Human tests can now compare whether fatigue, player specialties, and rival tactics lead to different lineup and match decisions.
 
+## Ice hockey prototype
+
+Two teams of five skaters and a goalie play three six-turn periods. Each team carries a second line that recovers on the bench. Build a rush with puck movement and screens, defend with a forecheck or slot coverage, and spend an order to change lines. **Practice a screened one-timer** coordinates a pass, a screen, and a shot. Watch for how often rushes create useful shot options and how clearly the game communicates tiring lines and turnovers.
+
+## American football prototype
+
+Two 11-player units take the field for each snap. The quarterback calls a handoff, sweep, quick pass, or deep pass. Use the remaining orders on blocking, protection, or a receiver's route. Defenders can blitz, fill a run gap, jump short routes, or drop deep. Four downs, yardage and field position drive the choices. On fourth down, go for the first down, punt, or try a field goal in range.
+
+The quick match compresses four quarters into 24 snaps. Teams swap ends at halftime and use separate offensive and defensive units. Touchdowns include the extra point and post-score drives start from a fixed spot. **Practice third and five** gives the player a pass, a receiver's slant, and protection to line up on one snap. Test whether players recognize when a route or protection changes the odds and when to trade possession for field position.
+
 ## Career and desktop playtest
 
 The extended club playtest keeps the roster, skills, equipped abilities and results across seasons. A player can change schedules between seasons and sign another available prospect. Each athlete can equip one ability per sport. Specialty abilities require six XP in that sport. Second wind unlocks at five XP across both sports and can be equipped in either. It improves recovery when an athlete has no order. Version 1 saves migrate to the expanded career, including committed turns in an active fixture.
@@ -107,7 +130,7 @@ A season records the final outcome and results against each rival. The next seas
 
 Use a headless TypeScript rules module and a browser client that renders the engine's state and submits commands. Keep state serializable and avoid hidden time or platform dependencies. Given the same starting state, rules version, seed, and plans, outcomes and event logs must match. UI estimates, AI, and validation read the same state and legal action rules. AI starts from the public snapshot captured before either plan is resolved.
 
-Basketball, soccer, and hockey share command validation, plan reveal, event formatting, browser planning controls, geometry helpers, and seeded randomness. Each sport owns its legal actions, formations, default movement, resolution, AI, match timing, and playing surface. Hockey keeps line changes in its own rules. Football can reuse the planning interface while keeping snaps and play progression in its rules.
+All four sports share command validation, plan reveal, event formatting, browser planning controls, geometry helpers, and seeded randomness. Each sport owns its legal actions, formations, default movement, resolution, AI, match timing, and playing surface. Hockey keeps line changes in its own rules. Football keeps snaps, field position, and drive progression in its rules.
 
 Keep an original 2D sporting presentation with clear athlete labels, control focus, visible possession, outcome feedback, and readable small-screen layouts. Mouse, keyboard, and touch are appropriate for early browser playtests. Gamepad navigation, remapping, and Steam Deck verification are commercial readiness gates. Offline single-player and versioned local saves should precede desktop packaging. Choose packaging after browser playtests and Steam Deck checks justify it.
 
@@ -121,12 +144,12 @@ Use CI to compile, run tests, and produce a downloadable browser build. Start wi
 | 2. Soccer architecture test | Complete an 11-on-11 match scenario with goalkeeping, spatial buildup, and shape. Verify that both sports can use the shared planning and event contract. Compare command budgets before expanding the architecture. |
 | 3. Tactical refinement | Demonstrate more than one effective attack and defensive response in each sport. Use playtests and simulations to tune plans, feedback, pacing, AI, and controls. |
 | 4. Athlete and club RPG | Show an athlete carrying a transferable strength between basketball and soccer while improving each sport's skills independently. Run a short career with recruitment, training, rivals, and meaningful roster choices. |
-| 5. Paid Steam release | Ship both basketball and soccer, a complete solo loop, readable onboarding, local saves, gamepad support, Steam Deck verification, and a release-quality build. |
-| 6. Expansion | Sequence hockey, American football, online competitive play, and mobile delivery according to evidence and capacity. |
+| 5. Four-sport prototype | Deliver the combined build and meet the prototype completion gates above. |
+| 6. Four-sport playtest | Observe players completing coached plays and full matches. Use evidence to prioritize balance, presentation, and where to expand club progression. |
+| 7. Steam release | Ship at least full-sided basketball and soccer, with a complete solo loop, readable onboarding, local saves, gamepad support, Steam Deck verification, and a release-quality build. Decide the commercial scope of hockey and football after playtesting. |
+| 8. Continued development | Sequence deeper careers, online competitive play, and mobile delivery according to evidence and capacity. |
 
-The [two-sport Steam launch candidate](STEAM-PREVIEW.md) contains the basketball and soccer career, guided practice, persistent display options, and separately packaged Windows and Linux versions. The candidate uses the existing local save format. Physical Steam Deck testing and Steamworks review are commercial release gates.
-
-Hockey is the first expansion playtest. It uses five skaters and a goalie per side, plus a second line that recovers on the bench. The first exhibition tests whether players can recognize a screen, time a one-timer, counter a forecheck, and spend an order on a line change. Evaluate how often attacks create useful shot options and how clearly the game communicates turnovers and tiring lines before adding hockey to career progression. The first paid release still requires basketball and soccer.
+Steam and Steam Deck remain the first commercial targets. The [Steam packaging preview](STEAM-PREVIEW.md) tests the two-sport delivery pipeline. Physical Steam Deck testing and Steamworks review belong to the commercial release stage.
 
 Turn Pro is planned as a premium game. Additional sports, campaigns, and cosmetics are possible later. Commercial decisions should protect the core play loop and the fairness of competitive modes.
 

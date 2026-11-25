@@ -53,6 +53,8 @@ try {
   assert.match(await page.locator('#practice-checklist').innerText(), /Practice play resolved/)
 
   const sport = page.getByRole('combobox', { name: 'Sport', exact: true })
+  assert.deepEqual(await sport.locator('option').evaluateAll(options => options.map(option => option.value)),
+    ['basketball', 'soccer', 'hockey', 'football'])
   await sport.selectOption('soccer')
   assert.equal(await page.locator('.marker').count(), 22)
   assert.equal(await page.locator('#lineup button').count(), 11)
@@ -182,11 +184,11 @@ try {
   assert.deepEqual(errors, [])
 
   await page.getByRole('button', { name: 'Quick match' }).click()
-  await sport.selectOption('hockey')
+  await page.getByRole('button', { name: 'How to play' }).click()
+  await page.getByRole('button', { name: 'Practice a hockey one-timer' }).click()
   assert.equal(await page.locator('.marker').count(), 12)
   assert.match(await page.locator('#possession').innerText(), /Puck/)
   assert.match(await page.locator('#lineup-detail').innerText(), /Line 1/)
-  await page.getByRole('button', { name: 'Practice a screened one-timer' }).click()
   await page.getByRole('button', { name: /Pass to Vale/ }).click()
   await page.getByRole('button', { name: /Vale, 100 stamina/ }).click()
   await page.getByRole('button', { name: /Ready one-timer/ }).click()
@@ -201,6 +203,30 @@ try {
     if (turn === 6 || turn === 12) assert.match(await page.locator('.timeline').first().innerText(), /switch ends/)
   }
   assert.match(await page.locator('.turn-clock').innerText(), /Final/i)
+
+  await page.getByRole('button', { name: 'How to play' }).click()
+  await page.getByRole('button', { name: 'Practice a football third down' }).click()
+  assert.equal(await page.locator('.marker').count(), 22)
+  assert.equal(await page.locator('#lineup button').count(), 11)
+  assert.match(await page.locator('.turn-clock').innerText(), /3rd & 5/)
+  await page.getByRole('button', { name: 'Quick pass to Vale' }).click()
+  await page.getByRole('button', { name: /Vale, 100 stamina/ }).click()
+  await page.getByRole('button', { name: 'Cut on a slant' }).click()
+  await page.getByRole('button', { name: /Blake, 100 stamina/ }).click()
+  await page.getByRole('button', { name: 'Pass protect' }).click()
+  await page.getByRole('button', { name: 'Commit snap' }).click()
+  assert.match(await page.locator('.timeline').first().innerText(), /First down, Comets/)
+  await page.getByRole('button', { name: 'New match' }).click()
+  for (let snap = 1; snap <= 24; snap++) {
+    await page.getByRole('button', { name: 'Commit snap' }).click()
+    if (snap === 12) assert.match(await page.locator('.timeline').first().innerText(), /Halftime. Teams switch ends/)
+  }
+  assert.match(await page.locator('.turn-clock').innerText(), /Final/i)
+  assert.equal(await page.locator('.turn').count(), 24)
+  await sport.selectOption('basketball')
+  assert.equal(await page.locator('.marker').count(), 10)
+  assert.equal(await page.getByRole('button', { name: 'Commit turn' }).isEnabled(), true)
+  assert.deepEqual(errors, [])
 
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true,
@@ -227,7 +253,18 @@ try {
   await mobile.getByRole('combobox', { name: 'Sport', exact: true }).selectOption('hockey')
   assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth), 390)
   assert.match(await mobile.locator('.turn-clock').innerText(), /Attack up/i)
-  console.log('Basketball, soccer, hockey, the club final, save restoration, and mobile touch passed.')
+  await mobile.getByRole('combobox', { name: 'Sport', exact: true }).selectOption('football')
+  assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth), 390)
+  assert.match(await mobile.locator('#lineup-detail').innerText(), /Attack up/i)
+  await mobile.getByRole('button', { name: 'Inside handoff' }).tap()
+  await mobile.getByRole('button', { name: 'Commit snap' }).tap()
+  assert.match(await mobile.locator('.turn-clock').innerText(), /Snap 2/i)
+  await mobile.getByRole('button', { name: 'Controls', exact: true }).tap()
+  await mobile.getByLabel('Text size').selectOption('extra')
+  await mobile.getByRole('button', { name: 'Close', exact: true }).tap()
+  await mobile.setViewportSize({ width: 320, height: 760 })
+  assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth), 320)
+  console.log('All four full matches from one browser build, the club final, save restoration, and touch passed.')
 } finally {
   await browser.close()
 }

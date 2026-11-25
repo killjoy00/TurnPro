@@ -272,6 +272,10 @@ body.controller-active :focus { outline: 3px solid var(--lime); outline-offset: 
 .hockey .lineup { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .hockey .marker { width: 28px; height: 28px; font-size: .7rem; }
 .hockey .ball { background: #141d21; border-color: #e5f4fe; border-radius: 50%; }
+.football .court { background: #285943; aspect-ratio: 2.08; }
+.football .lineup { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.football .marker { width: 23px; height: 23px; font-size: .64rem; }
+.football .options { max-height: 305px; overflow: auto; padding: 3px; margin-inline: -3px; }
 .lineup-detail { padding: 5px 10px 0; color: var(--muted); font-size: .8rem; }
 .display-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
 .display-options label { display: grid; gap: 3px; color: var(--muted); font-size: .86rem; }
@@ -285,4 +289,15 @@ html[data-contrast="high"] .court { outline: 1px solid #91b5c7; }
   .hockey .court { aspect-ratio: .81; }
   .hockey .marker { width: 23px; height: 23px; }
   .hockey .lineup { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .football .court { aspect-ratio: .64; }
+  .football .lineup { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .football .team-name b { letter-spacing: .015em; }
+}
+@media (max-width: 420px) {
+  .scoreboard { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr); }
+  .team-score { flex-direction: column; gap: 3px; }
+  .scoreboard .team-name { order: 1; text-align: center; overflow-wrap: anywhere; }
+  .turn-clock { white-space: normal; }
+  .football .option { flex-direction: column; align-items: flex-start; gap: 2px; min-height: 44px; }
+  .football .option small { text-align: left; }
 }
