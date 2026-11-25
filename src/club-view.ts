@@ -1,19 +1,21 @@
 import {
-  availableProspects, clubAthlete, createClub, development, nextFixture, nextSeason, profile, ratings, ROLES,
+  availableProspects, baseSkill, clubAthlete, createClub, development, keeperSlot, MAX_FILM_BONUS, nextFixture, nextSeason, profile, ratings, ROLES,
   SPECIALTIES, TECHNIQUES, unlocked, unlockRequirement,
   type Club, type SeasonMode, type Specialty, type Sport,
 } from './club.ts'
 import { DEFENSE_NAMES } from './opponent.ts'
 import { SHAPE_NAMES } from './soccer.ts'
+import { HOCKEY_STYLES } from './hockey-opponent.ts'
+import { FOOTBALL_STYLES } from './football-opponent.ts'
 import type { Technique } from './match.ts'
-import { leagueTable, rivalPair, rivalryRecords, RIVALS, schedule, seasonOutcome, seasonSchedule, type SeasonRecord } from './league.ts'
+import { leagueTable, rivalPair, rivalryRecords, RIVALS, schedule, seasonOutcome, seasonSchedule, seasonSports, SPORTS, type SeasonRecord } from './league.ts'
 
 export interface ClubView {
   getClub(): Club | null
   update(club: Club): void
   start(): void
   recruit(id: string): void
-  train(id: string, sport: Sport): void
+  train(id: string, focus: Sport | 'film' | 'recovery'): void
   specialize(id: string, choice: Specialty): void
   equip(id: string, sport: Sport, technique: Technique | null): void
   changeStarter(sport: Sport, slot: number, id: string): void
@@ -21,11 +23,13 @@ export interface ClubView {
   importSave(file: File): Promise<void>
 }
 
-const SPORT: Record<Sport, string> = { basketball: 'Basketball', soccer: 'Soccer' }
+const SPORT: Record<Sport, string> = { basketball: 'Basketball', soccer: 'Soccer', hockey: 'Ice hockey', football: 'American football' }
 const seasonOutcomeByIndex = (record: SeasonRecord, index: number) => seasonOutcome(record, index + 1)
 
-export function mountClub(container: HTMLElement, controller: ClubView, signal: AbortSignal) {
-  let lineupSport: Sport = controller.getClub()?.mode === 'soccer' ? 'soccer' : 'basketball'
+export function mountClub(container: HTMLElement, controller: ClubView, signal: AbortSignal, fullPrototype: boolean) {
+  const availableSports = fullPrototype ? SPORTS : SPORTS.slice(0, 2)
+  const startingTab = (club: Club | null) => club ? (nextFixture(club)?.sport ?? seasonSports(club.mode)[0]) : 'basketball'
+  let lineupSport: Sport = startingTab(controller.getClub())
   let athlete = 'reed'
   let message = ''
   let choosingSeason = false
@@ -38,9 +42,11 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         <h2>Comets club</h2>
         <p>${club ? 'Choose a schedule for the next season with your existing club.' : 'Choose a schedule for your solo season.'}</p>
         <div class="club-actions">
-          <button data-season="both">Both sports · 6 fixtures</button>
+          ${fullPrototype ? '<button class="primary" data-season="all">All four sports · 12 fixtures</button>' : ''}
+          <button data-season="both">${fullPrototype ? 'Basketball &amp; soccer' : 'Both sports'} · 6 fixtures</button>
           <button data-season="basketball">Basketball · 4 fixtures</button>
           <button data-season="soccer">Soccer · 4 fixtures</button>
+          ${fullPrototype ? '<button data-season="hockey">Ice hockey · 4 fixtures</button><button data-season="football">American football · 4 fixtures</button>' : ''}
           ${club ? '<button data-action="cancel">Back to completed season</button>' : ''}
         </div>
       </section>${saveControls(Boolean(club))}
@@ -69,7 +75,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     const titles = completed.filter(result => result === 'Champion').length
     const editable = fixture && !club.pending
     const canTrain = editable && club.trainedWeek !== fixture.week
-    const allowedSports = club.mode === 'both' ? (['basketball', 'soccer'] as const) : [club.mode]
+    const allowedSports = seasonSports(club.mode)
     const roster = club.roster.map(entry => {
       const data = profile(entry.id)
       return `<button class="roster-entry" data-athlete="${entry.id}" aria-pressed="${entry.id === athlete}">
@@ -77,16 +83,21 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         <small>${entry.fatigue}% fatigue</small></button>`
     }).join('')
     const current = club.lineups[lineupSport]
+    const keeper = keeperSlot(lineupSport)
     const lineup = current.map((id, slot) => {
       const label = ROLES[lineupSport][slot]
       const choices = club.roster.filter(member => {
-        if (lineupSport !== 'soccer') return true
-        if (slot === 0) return profile(member.id).keeper
-        return member.id !== current[0] || profile(id).keeper
-      }).map(entry => `<option value="${entry.id}" ${entry.id === id ? 'selected' : ''}>${profile(entry.id).name} · ${entry.fatigue}% fatigue</option>`).join('')
+        if (keeper < 0) return true
+        if (slot === keeper) return profile(member.id).keeper
+        return member.id !== current[keeper] || profile(id).keeper
+      }).map(entry => {
+        const data = profile(entry.id)
+        const skill = baseSkill(data, lineupSport) + development(entry, lineupSport)
+        return `<option value="${entry.id}" ${entry.id === id ? 'selected' : ''}>${data.name} · Skill ${skill} · ${entry.fatigue}% fatigue</option>`
+      }).join('')
       return `<label class="lineup-choice"><span>${label}</span><select data-slot="${slot}" aria-label="${label} starter, slot ${slot + 1}" ${editable ? '' : 'disabled'}>${choices}</select></label>`
     }).join('')
-    const stats = (['basketball', 'soccer'] as const).map(sport => {
+    const stats = availableSports.map(sport => {
       const stat = ratings(player, sport)
       const options = (Object.keys(TECHNIQUES) as Technique[]).map(key => {
         if (TECHNIQUES[key].specialty && TECHNIQUES[key].specialty !== player.specialty) return ''
@@ -95,7 +106,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
           ${TECHNIQUES[key].label}${available ? '' : ` · ${unlockRequirement(key)}`}</option>`
       }).join('')
       return `<li><b>${SPORT[sport]}</b> · ${player.xp[sport]} XP · +${development(player, sport)} skill
-        <small>Passing ${stat.passing} · Finishing ${stat.finishing} · Defensive bonus ${stat.defense}</small>
+        <small>Passing ${stat.passing} · Finishing ${stat.finishing} · Defensive bonus ${stat.defense}${keeperSlot(sport) >= 0 && stat.keeping ? ` · Keeping ${stat.keeping}` : ''}</small>
         <label class="lineup-choice">Ability <select data-ability="${sport}" aria-label="${SPORT[sport]} ability for ${info.name}" ${editable ? '' : 'disabled'}>
           <option value="">No ability equipped</option>${options}
         </select></label>
@@ -104,12 +115,16 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     const prospects = availableProspects(club)
     const sign = prospects.length && editable
       ? `<section class="club-panel"><h3>Recruit one athlete this season</h3><div class="recruits">${prospects.map(entry =>
-        `<div><b>${entry.name}</b><p>Awareness ${entry.awareness} · Basketball ${entry.basketball} · Soccer ${entry.soccer}${entry.keeper ? ' · Goalkeeper' : ''}</p>
+        `<div><b>${entry.name}</b><p>${entry.specialty} · Awareness ${entry.awareness}${entry.keeper ? ' · Goalkeeper' : ''}</p>
+        <p>${allowedSports.map(sport => `${SPORT[sport]} ${baseSkill(entry, sport)}`).join(' · ')}</p>
         <button data-recruit="${entry.id}">Sign ${entry.name}</button></div>`).join('')}</div></section>` : ''
     const headline = fixture
       ? `${fixture.stage === 'final' ? 'Club final' : `Week ${fixture.week}`} · ${SPORT[fixture.sport]} vs ${fixture.rival}`
       : 'Season complete'
-    const opponent = fixture && (fixture.sport === 'soccer' ? SHAPE_NAMES[fixture.soccer] : DEFENSE_NAMES[fixture.basketball])
+    const opponent = fixture && {
+      soccer: SHAPE_NAMES[fixture.soccer], basketball: DEFENSE_NAMES[fixture.basketball],
+      hockey: HOCKEY_STYLES[fixture.hockey], football: FOOTBALL_STYLES[fixture.football],
+    }[fixture.sport]
 
     const leaguePanel = standings ? `<section class="club-panel"><h3>League standings</h3>
       <p class="muted league-rule">Top two reach the final. Ties in the final favor the higher seed.</p>
@@ -129,11 +144,12 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     const rivalRows = rivalryRecords([...club.history, club]).map(row => {
       const rival = RIVALS.find(entry => entry.rival === row.rival)!
       return `<tr><th scope="row">${rival.rival}</th><td>${DEFENSE_NAMES[rival.basketball]}</td><td>${SHAPE_NAMES[rival.soccer]}</td>
+        ${fullPrototype ? `<td>${HOCKEY_STYLES[rival.hockey]}</td><td>${FOOTBALL_STYLES[rival.football]}</td>` : ''}
         <td>${row.wins}–${row.draws}–${row.losses}</td></tr>`
     }).join('')
     const past = club.history.map(({ mode, results }, index) => {
       const record = results.map(([a, b]) => a > b ? 'W' : a === b ? 'D' : 'L').join('–')
-      return `<li>Season ${index + 1} · ${mode === 'both' ? 'Both sports' : SPORT[mode]} · ${record} · ${completed[index]}</li>`
+      return `<li>Season ${index + 1} · ${mode === 'all' ? 'All four sports' : mode === 'both' ? 'Both sports' : SPORT[mode]} · ${record} · ${completed[index]}</li>`
     }).join('')
     container.innerHTML = `<section class="club-hero"><h2>Comets club</h2>
       <p><b>Season ${club.season} · ${headline}</b>${opponent ? ` · ${opponent}` : ''}</p>
@@ -150,19 +166,25 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       ${leaguePanel}
       <section class="club-panel"><h3>Starting lineup</h3><div class="club-actions">
         ${allowedSports.map(sport => `<button data-lineup="${sport}" aria-pressed="${lineupSport === sport}">${SPORT[sport]}</button>`).join('')}
-      </div><div class="lineup-options">${lineup}</div></section>
+      </div>
+      ${lineupSport === 'football' ? '<p class="muted league-rule">Each athlete plays both listed positions and shares one stamina pool.</p>'
+        : lineupSport === 'hockey' ? '<p class="muted league-rule">The reserve line rests until your goalie calls a line change.</p>' : ''}
+      <div class="lineup-options">${lineup}</div></section>
       <section class="club-panel"><h3>Roster</h3><div class="roster-list">${roster}</div></section>
       <section class="club-panel"><h3>${info.name}</h3>
-        <p><b>Awareness ${info.awareness}</b> · ${player.fatigue}% fatigue</p>
+        <p><b>Awareness ${info.awareness + player.film}</b>${player.film ? ` (+${player.film} from film)` : ''} · ${player.fatigue}% fatigue</p>
         <label class="lineup-choice">Specialty <select data-specialty aria-label="Specialty for ${info.name}" ${editable ? '' : 'disabled'}>
           ${Object.keys(SPECIALTIES).map(key => `<option ${key === player.specialty ? 'selected' : ''}>${key}</option>`).join('')}</select></label>
         <p class="muted">${SPECIALTIES[player.specialty]}</p><ul class="sport-stats">${stats}</ul>
         ${editable ? `<p class="muted">${canTrain ? 'One training session available this week.' : 'Training used this week.'}</p>
-        <div class="club-actions">${allowedSports.map(sport => `<button data-train="${sport}" ${canTrain ? '' : 'disabled'}>Train ${SPORT[sport]}</button>`).join('')}</div>` : ''}
+        <div class="club-actions">${allowedSports.map(sport => `<button data-train="${sport}" ${canTrain ? '' : 'disabled'}>Train ${SPORT[sport]}</button>`).join('')}
+        <button data-train="film" ${canTrain && player.film < MAX_FILM_BONUS ? '' : 'disabled'}>Study film (+1 awareness)</button>
+        <button data-train="recovery" ${canTrain && player.fatigue > 0 ? '' : 'disabled'}>Recover (−28 fatigue)</button></div>` : ''}
       </section>
     </div>${sign}<details class="club-panel rival-records"><summary>Rival records</summary>
       <div class="schedule-scroll"><table class="schedule"><thead><tr><th scope="col">Club</th>
-        <th scope="col">Basketball defense</th><th scope="col">Soccer defense</th><th scope="col">W–D–L</th>
+        <th scope="col">Basketball defense</th><th scope="col">Soccer defense</th>
+        ${fullPrototype ? '<th scope="col">Hockey defense</th><th scope="col">Football defense</th>' : ''}<th scope="col">W–D–L</th>
       </tr></thead><tbody>${rivalRows}</tbody></table></div></details>${past ? `<details class="club-panel past-seasons"><summary>Past seasons</summary><ol>${past}</ol></details>` : ''}
     ${saveControls(true)}`
   }
@@ -188,7 +210,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       const current = controller.getClub()
       controller.update(current ? nextSeason(current, mode) : createClub(mode))
       athlete = 'reed'
-      lineupSport = mode === 'soccer' ? 'soccer' : 'basketball'
+      lineupSport = seasonSports(mode)[0]
       choosingSeason = false
     } else if (data.action === 'new' || data.action === 'cancel') {
       choosingSeason = data.action === 'new'
@@ -204,8 +226,12 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       athlete = data.recruit
       message = `${profile(athlete).name} joined the club.`
     } else if (data.train) {
-      controller.train(athlete, data.train as Sport)
-      message = `${profile(athlete).name} earned 3 ${SPORT[data.train as Sport]} XP.`
+      const focus = data.train as Sport | 'film' | 'recovery'
+      controller.train(athlete, focus)
+      const name = profile(athlete).name
+      message = focus === 'film' ? `${name} gained 1 awareness across sports.`
+        : focus === 'recovery' ? `${name} finished recovery at ${clubAthlete(controller.getClub()!, athlete).fatigue}% fatigue.`
+          : `${name} earned 3 ${SPORT[focus]} XP.`
     }
     render()
     if (data.athlete || data.lineup) container.querySelector<HTMLButtonElement>('[aria-pressed="true"]' +
@@ -221,7 +247,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         await controller.importSave(input.files[0])
         if (signal.aborted) return
         athlete = 'reed'
-        lineupSport = controller.getClub()?.mode === 'soccer' ? 'soccer' : 'basketball'
+        lineupSport = startingTab(controller.getClub())
         choosingSeason = false
         message = 'Club save loaded.'
       } else if (input.dataset.slot !== undefined) {

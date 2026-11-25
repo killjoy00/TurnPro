@@ -12,10 +12,10 @@ The prototype is complete when the same packaged build meets these gates:
 | --- | --- |
 | All four sports in one game | The sport menu opens basketball, soccer, ice hockey, and American football in the same running app. Each starts a full-sided match against the computer, accepts legal orders, reaches a final score, and can be replayed or switched to another sport. |
 | One coached tactic per sport | Complete a basketball kick-out, a soccer through ball or cross, a screened hockey one-timer, and a football third-down conversion. Each turn log explains how the orders changed the play. |
-| Club development and continuity | Develop an athlete and complete a basketball-and-soccer club season. Reload an active fixture and preserve its lineup, training, result, and committed turns. Hockey and American football enter the prototype as quick matches. |
+| Club development and continuity | Use one roster across a four-sport season. Develop sport skills and shared awareness, manage fatigue, and reload an active fixture with its lineup, training, and committed turns. |
 | Downloadable, testable builds | Automated checks complete all four sports from the same browser file. The Windows and Linux packages each expose all four sports, launch a four-sport match session, and restore a club save. Try the same builds with touch, keyboard, and a controller during playtesting. |
 
-Use these builds for a round of four-sport human playtesting. Collect completion time, confusion about what an order will do, whether the player can explain a decisive play, and whether they choose to play another match. Use the results to prioritize tactical tuning and decide when to bring hockey and football into club progression.
+Use these builds for a round of four-sport human playtesting. Collect completion time, confusion about what an order will do, whether the player can explain a decisive play, and whether they choose to play another match. Ask players when they trained a specialist, rested a starter, or used the same athlete in a second sport. Use the results to prioritize tactical tuning and career pacing.
 
 ## What players do
 
@@ -51,7 +51,7 @@ An athlete has an identity, physical profile, tendencies, strengths, fatigue, an
 
 Specialties offer distinct tools and tradeoffs. Start by testing Playmaker, Defender, and Finisher builds with active, passive, or reaction choices that change decisions on the court. Later candidates include Speedster, Technician, Enforcer, Strategist, Captain, Ironman, and All-Rounder. A player might combine a Playmaker's passing options with a Defender's off-ball reaction while giving up a second scoring ability. The first shared progression experiment should demonstrate one athlete bringing a useful universal trait into soccer with a lower independent soccer skill level.
 
-The career grows from a modest roster through recruitment, training, lineups, recovery, competitions, and rival clubs. Distinct opponents should invite tactical adaptation. A possession-focused soccer rival demands a different plan from a transition-heavy one. Shared training resources and scheduling make specialists and generalists valuable in different situations. The prototype's two-sport league and championship test those decisions. Four-sport careers need evidence that the additional sports make roster choices more interesting.
+The career grows from a modest roster through recruitment, training, lineups, recovery, competitions, and rival clubs. Distinct opponents should invite tactical adaptation. A possession-focused soccer rival demands a different plan from a transition-heavy one. Shared training resources and scheduling make specialists and generalists valuable in different situations.
 
 ## Competitive play and pacing
 
@@ -114,7 +114,9 @@ The quick match compresses four quarters into 24 snaps. Teams swap ends at halft
 
 ## Career and desktop playtest
 
-The extended club playtest keeps the roster, skills, equipped abilities and results across seasons. A player can change schedules between seasons and sign another available prospect. Each athlete can equip one ability per sport. Specialty abilities require six XP in that sport. Second wind unlocks at five XP across both sports and can be equipped in either. It improves recovery when an athlete has no order. Version 1 saves migrate to the expanded career, including committed turns in an active fixture.
+The four-sport season has 12 regular fixtures over six weeks. Each rival plays the club in all four sports. Each week, choose one athlete to practice a sport for three XP, study film for one permanent awareness point, or recover up to 28 fatigue. Film training adds up to two awareness points per athlete and helps passing in each sport. Individual sport XP improves technical ratings in that sport. One recruit can fill different roles across sports. Shorter single-sport and basketball-and-soccer seasons are also available.
+
+Hockey starts five skaters and a goalie, with a named reserve line. Reserve skaters earn match XP after taking the ice. Football assigns 11 players to paired offensive and defensive roles, so a quarterback who spends stamina on a drive brings the same energy into the next defensive snap. XP, fatigue, and equipped abilities carry between seasons. Each athlete can equip one ability per sport. Specialty abilities require six XP and the relevant specialty in that sport. Second wind unlocks at five total XP across sports and improves in-match recovery on unassigned turns. Saves from versions 1 through 3 migrate with their existing results and in-progress fixtures.
 
 The same solo build runs as offline HTML and as a packaged Windows or Linux desktop app. The desktop build uses a stable local origin for saves. Guided practice gives players a checklist for coordinated turns, and controller settings let players remap the game’s action buttons.
 
@@ -122,7 +124,9 @@ Before the paid release, play a full match and resume a save on a physical Steam
 
 ## Club league and final
 
-Each regular fixture advances a four-club table. The two clubs on the other side of the schedule play a deterministic AI match in the same sport, and that score is saved with the round. The top two reach the final. Single-sport clubs play one final match. In a mixed final, one basketball fixture and one soccer fixture each award three points for a win or one for a draw. A tied final goes to the higher league seed.
+Each regular fixture advances a four-club table. The two clubs on the other side of the schedule play a deterministic AI match in the same sport, and that score is saved with the round. The top two reach the final. Play one final leg per sport in the season and combine match points. A win earns three points and a draw earns one. A tied final goes to the higher league seed. The four-sport final runs over two weeks.
+
+Scout the opponent before choosing starters and calling plays. Forge forechecks aggressively in hockey and sends extra blitzers in football. The Breakers guard the slot and use deeper coverage. The Rovers play a more balanced defense. The career uses these tendencies for your matches and the other league fixtures.
 
 A season records the final outcome and results against each rival. The next season starts a fresh table with a different match seed, and the club retains its roster, training, titles, and rival records. Earlier completed saves retain their original results and remain complete. Older in-progress saves preserve their match and join the league at their current round.
 
@@ -145,7 +149,7 @@ Use CI to compile, run tests, and produce a downloadable browser build. Start wi
 | 3. Tactical refinement | Demonstrate more than one effective attack and defensive response in each sport. Use playtests and simulations to tune plans, feedback, pacing, AI, and controls. |
 | 4. Athlete and club RPG | Show an athlete carrying a transferable strength between basketball and soccer while improving each sport's skills independently. Run a short career with recruitment, training, rivals, and meaningful roster choices. |
 | 5. Four-sport prototype | Deliver the combined build and meet the prototype completion gates above. |
-| 6. Four-sport playtest | Observe players completing coached plays and full matches. Use evidence to prioritize balance, presentation, and where to expand club progression. |
+| 6. Four-sport playtest | Observe players completing coached plays and full matches. Test lineup rotation, league pacing, and whether film, recovery, and technical practice each create viable choices across a four-sport season. |
 | 7. Steam release | Ship at least full-sided basketball and soccer, with a complete solo loop, readable onboarding, local saves, gamepad support, Steam Deck verification, and a release-quality build. Decide the commercial scope of hockey and football after playtesting. |
 | 8. Continued development | Sequence deeper careers, online competitive play, and mobile delivery according to evidence and capacity. |
 
