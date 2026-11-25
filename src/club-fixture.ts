@@ -67,6 +67,7 @@ export function openClubFixture(club: Club):
   }
   if (fixture.sport === 'soccer') {
     const match = soccer.createMatch(fixture.seed, 0, 3, fixture.soccer)
+    if (club.pending.rules === soccer.PREVIOUS_RULES_VERSION) match.rulesVersion = soccer.PREVIOUS_RULES_VERSION
     applyLineup(club, 'soccer', match, fixture.rival)
     return { sport: 'soccer', ...replay(club.pending, match, soccerAI, soccer.resolveTurn) }
   }
@@ -79,6 +80,7 @@ export function openClubFixture(club: Club):
         ...replay(club.pending, match, (state, team) => hockeyAI(state, team, fixture.hockey), hockey.resolveTurn) }
     }
     const match = football.createMatch(fixture.seed, 0, lineup)
+    if (club.pending.rules === football.PREVIOUS_RULES_VERSION) match.rulesVersion = football.PREVIOUS_RULES_VERSION
     match.teams = ['Comets', fixture.rival]
     return { sport: 'football', style: fixture.football,
       ...replay(club.pending, match, (state, team) => footballAI(state, team, fixture.football), football.resolveTurn) }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { chromium } from 'playwright'
 import { createClub, schedule } from '../src/club.ts'
 
@@ -10,6 +11,10 @@ try {
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
   await page.goto(game)
+  await page.getByRole('button', { name: 'How to play' }).click()
+  await page.getByRole('button', { name: 'Playtest feedback' }).click()
+  await page.getByRole('button', { name: 'Start recording' }).click()
+  await page.getByRole('dialog', { name: 'Playtest feedback' }).getByRole('button', { name: 'Close' }).click()
   assert.equal(await page.locator('.marker').count(), 10)
   await page.getByRole('button', { name: /^Drive −14 STA$/ }).focus()
   await page.keyboard.press('Enter')
@@ -192,8 +197,11 @@ try {
   await page.getByRole('button', { name: /Pass to Vale/ }).click()
   await page.getByRole('button', { name: /Vale, 100 stamina/ }).click()
   await page.getByRole('button', { name: /Ready one-timer/ }).click()
+  const plannedShot = page.locator('#orders li').filter({ hasText: 'Ready one-timer' })
+  assert.match(await plannedShot.innerText(), /goal if received/)
   await page.getByRole('button', { name: /Okafor, 100 stamina/ }).click()
   await page.getByRole('button', { name: /Screen the goalie/ }).click()
+  assert.match(await plannedShot.innerText(), /Screen set/)
   await page.getByRole('button', { name: 'Commit turn' }).click()
   assert.match(await page.locator('.timeline').first().innerText(), /Reed finds Vale/)
   assert.match(await page.locator('.timeline').first().innerText(), /Okafor screens Hart/)
@@ -216,6 +224,7 @@ try {
   await page.getByRole('button', { name: 'Pass protect' }).click()
   await page.getByRole('button', { name: 'Commit snap' }).click()
   assert.match(await page.locator('.timeline').first().innerText(), /First down, Comets/)
+  assert.match(await page.locator('.timeline').first().innerText(), /route matched, pass protection/)
   await page.getByRole('button', { name: 'New match' }).click()
   for (let snap = 1; snap <= 24; snap++) {
     await page.getByRole('button', { name: 'Commit snap' }).click()
@@ -236,6 +245,7 @@ try {
   await career.getByRole('button', { name: 'Club season' }).click()
   await career.getByRole('button', { name: 'All four sports · 12 fixtures' }).click()
   assert.equal(await career.locator('.fixture-schedule tbody tr').count(), 12)
+  assert.match(await career.locator('.club-readiness').innerText(), /Avg stamina 100/)
   await career.getByRole('button', { name: 'Study film (+1 awareness)' }).click()
   assert.match(await career.locator('.club-status').innerText(), /Reed gained 1 awareness across sports/)
   assert.equal(await career.getByRole('button', { name: 'Train Ice hockey' }).isDisabled(), true)
@@ -307,6 +317,19 @@ try {
   await mobile.getByRole('button', { name: 'Close', exact: true }).tap()
   await mobile.setViewportSize({ width: 320, height: 760 })
   assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth), 320)
+  await page.getByRole('button', { name: 'How to play' }).click()
+  await page.getByRole('button', { name: 'Playtest feedback' }).click()
+  await page.getByRole('button', { name: 'Stop recording' }).click()
+  await page.getByLabel(/Where did you get stuck/).fill('Automated export check.')
+  const report = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download feedback' }).click()
+  const reportFile = await report
+  assert.equal(reportFile.suggestedFilename(), 'turn-pro-playtest.txt')
+  const contents = await readFile(await reportFile.path(), 'utf8')
+  assert.match(contents, /Basketball quick match, from turn 1, 12 committed, .*complete/)
+  assert.match(contents, /Ice hockey practice, from turn 1, 1 committed, .*complete/)
+  assert.match(contents, /American football quick match, from turn 1, 24 committed, .*complete/)
+  assert.match(contents, /Automated export check/)
   console.log('All four quick matches, four-sport career lineups and save restoration, the club final, and touch passed.')
 } finally {
   await browser.close()

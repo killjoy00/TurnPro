@@ -1,5 +1,6 @@
 import { clamp } from './math.ts'
 import type { Appearance, AthleteBuild, PlanCommand, Technique } from './match.ts'
+import { PREVIOUS_RULES_VERSION as ORIGINAL_SOCCER_RULES } from './soccer.ts'
 import {
   schedule, seasonSchedule, seasonSports, simulateRivals, SPORTS, TURN_LIMITS,
   type Fixture, type LeagueProgress, type Score, type SeasonMode, type SeasonRecord, type Sport,
@@ -263,10 +264,11 @@ export function settleFixture(club: Club, score: Score, players: readonly { team
     }
   })
   const league = club.league && fixture.stage === 'regular'
-    ? { ...club.league, otherResults: [...club.league.otherResults, simulateRivals(fixture)] } : club.league
+    ? { ...club.league, otherResults: [...club.league.otherResults, simulateRivals(fixture, { rulesVersion: pending.rules })] } : club.league
   const next = { ...club, roster, league, results: [...club.results, score], pending: null }
   if (nextFixture(next)?.week !== fixture.week) {
-    next.roster = roster.map(player => ({ ...player, fatigue: Math.max(0, player.fatigue - 18) }))
+    const daysOff = club.mode === 'all' ? 24 : 18
+    next.roster = roster.map(player => ({ ...player, fatigue: Math.max(0, player.fatigue - daysOff) }))
   }
   return next
 }
@@ -315,7 +317,8 @@ function migrateLeague(data: Record<string, unknown>): Record<string, unknown> {
   } : data
   if (!Array.isArray(previous.history)) return data
   const league: LeagueProgress | null = data.results.length === regular.length ? null
-    : { seedOffset: 0, otherResults: regular.slice(0, data.results.length).map(simulateRivals) }
+    : { seedOffset: 0, otherResults: regular.slice(0, data.results.length).map(fixture =>
+      simulateRivals(fixture, { rulesVersion: ORIGINAL_SOCCER_RULES })) }
   return { ...previous, version: 3, league, history: previous.history.map(entry => ({ ...entry, league: null })) }
 }
 

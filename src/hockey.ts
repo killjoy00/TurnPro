@@ -250,6 +250,27 @@ export function shotEstimate(match: Match, player: Skater, screened = false, one
   return { range, pressure, onTarget, save, goal: Math.round(onTarget * (100 - save) / 100) }
 }
 
+function movementRange(player: Skater) {
+  return (8 + player.speed) * (0.67 + player.stamina * 0.0033)
+}
+
+function screensGoal(match: Match, shooter: Skater, position: Point) {
+  return distance(position, attackGoal(match, shooter.team)) <= 11 && distance(position, shooter.position) > 2
+}
+
+export function previewShot(match: Match, command: Command, plan: readonly Command[]) {
+  const shooter = athleteById(match, command.athlete)
+  const oneTimer = command.kind === 'one-timer'
+  const receivingPass = plan.some(order => order.athlete === match.holder && order.kind === 'pass' && order.target === shooter.id)
+  const screened = plan.some(order => {
+    if (order.kind !== 'screen') return false
+    const player = athleteById(match, order.athlete)
+    const target = commandTarget(match, order)!
+    return player.team === shooter.team && screensGoal(match, shooter, stepToward(player.position, target, movementRange(player)))
+  })
+  return { ...shotEstimate(match, shooter, screened, oneTimer), screened, receivingPass }
+}
+
 function passLane(match: Match, player: Skater, receiver: Skater): Skater[] {
   return opponents(match, player.team).filter(defender => defender.slot < 5
     && distanceToSegment(defender.position, player.position, receiver.position) <= 2.3)
@@ -281,7 +302,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     const order = orders.get(before.id)
     const target = order && commandTarget(match, order)
     const resting = order?.kind === 'shoot' || order?.kind === 'pass' || order?.kind === 'one-timer' || before.id === original.id
-    const pace = (8 + before.speed) * (0.67 + before.stamina * 0.0033)
+    const pace = movementRange(before)
     player.position = target && order?.kind !== 'pass' && order?.kind !== 'shoot'
       ? stepToward(before.position, target, pace)
       : resting ? before.position : stepToward(before.position, assignment(match, before, original), pace * 0.4)
@@ -294,7 +315,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   function shoot(shooter: Skater, oneTimer: boolean) {
     const goal = attackGoal(next, shooter.team)
     const screen = next.athletes.find(player => player.team === shooter.team && orders.get(player.id)?.kind === 'screen'
-      && distance(player.position, goal) <= 11 && distance(player.position, shooter.position) > 2)
+      && screensGoal(next, shooter, player.position))
     const shot = shotEstimate(next, shooter, Boolean(screen), oneTimer)
     const keeper = bySlot(next, otherTeam(shooter.team), 5)
     const detail = `${shot.goal}% goal chance${screen ? ` · ${screen.name} screens ${keeper.name}` : ''}`

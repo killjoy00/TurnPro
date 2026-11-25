@@ -14,6 +14,7 @@ import { mountClub } from './club-view.ts'
 import { teamNames, type MatchSnapshot, type PlanCommand } from './match.ts'
 import { installGamepad } from './gamepad.ts'
 import { installDisplaySettings } from './display-settings.ts'
+import { installPlaytest } from './playtest.ts'
 
 declare const TURN_PRO_FULL_PROTOTYPE: boolean
 
@@ -142,7 +143,7 @@ function mountHockey(signal: AbortSignal, season?: SeasonMatch<hockey.Match, hoc
     legalCommands: hockey.legalCommands,
     label: hockey.commandLabel,
     stamina: order => hockey.ACTIONS[order.kind].stamina,
-    preview(match, order) {
+    preview(match, order, plan) {
       const athlete = hockey.athleteById(match, order.athlete)
       if (order.kind === 'change') return `${hockey.reserveStamina(match, athlete.team)}% line stamina · `
       if (order.kind === 'pass') {
@@ -150,8 +151,9 @@ function mountHockey(signal: AbortSignal, season?: SeasonMatch<hockey.Match, hoc
         return `~${Math.round(hockey.passChance(match, athlete, receiver))}% now · `
       }
       if (order.kind === 'shoot' || order.kind === 'one-timer') {
-        const shot = hockey.shotEstimate(match, athlete, false, order.kind === 'one-timer')
-        return `~${shot.goal}% goal now · `
+        const shot = hockey.previewShot(match, order, plan)
+        if (order.kind === 'one-timer' && !shot.receivingPass) return 'Needs a pass · '
+        return `${shot.screened ? 'Screen set · ' : ''}~${shot.goal}% goal${order.kind === 'one-timer' ? ' if received' : ' now'} · `
       }
       return ''
     },
@@ -200,7 +202,7 @@ function mountFootball(signal: AbortSignal, season?: SeasonMatch<football.Match,
       if ('target' in order || order.kind === 'field-goal') {
         const reading = football.playEstimate(match, order, plan)
         return order.kind === 'field-goal' ? `~${reading.chance}% make · `
-          : `~${reading.chance}% if thrown · ${reading.yards} yd route · `
+          : `~${reading.chance}% catch · ${reading.sack}% sack · ${reading.yards} yd · `
       }
       if (order.kind === 'inside' || order.kind === 'sweep-left' || order.kind === 'sweep-right') {
         return `~${football.playEstimate(match, order, plan).yards} yd base · `
@@ -364,6 +366,7 @@ clubNav.addEventListener('click', () => screen === 'club' ? showQuick(true) : sh
 showQuick(true)
 
 const learn = document.getElementById('learn-dialog') as HTMLDialogElement
+if (TURN_PRO_FULL_PROTOTYPE) installPlaytest(learn)
 document.getElementById('learn-nav')!.addEventListener('click', () => learn.showModal())
 learn.addEventListener('click', event => {
   const button = (event.target as Element).closest<HTMLButtonElement>('button[data-learn]')

@@ -3,6 +3,7 @@
 Turn Pro is a turn-based tactical sports RPG built around full teams, simultaneous plans, and athletes who develop across sports.
 
 - [Game vision and release gates](docs/VISION.md)
+- [Four-sport playtest and balance results](docs/PLAYTEST.md)
 - [Build and test runs](https://github.com/killjoy00/TurnPro/actions/workflows/prototype.yml)
 - [Steam launch candidate and depot preview](docs/STEAM-PREVIEW.md)
 

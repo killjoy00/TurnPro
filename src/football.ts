@@ -7,7 +7,8 @@ import {
 export const FIELD = { width: 120, height: 54, goal: 10 }
 export const QUARTER_SNAPS = 6
 export const TURN_LIMIT = QUARTER_SNAPS * 4
-export const RULES_VERSION = 1
+export const PREVIOUS_RULES_VERSION = 1
+export const RULES_VERSION = 2
 const RECEIVERS = [7, 8, 9, 10]
 const OFFENSE = [
   ['QB', '8', 'Reed', 'Quinn', -5, 27], ['RB', '22', 'Imani', 'Park', -8, 31],
@@ -255,11 +256,13 @@ export function playEstimate(match: Match, play: Play, offense: readonly Command
       chance: Math.round(clamp((deep ? 56 : 74) + (fit ? 13 : 0) - pressure * 9 - coverage * 12 - fatigue + talent + matchup, 20, 94)),
       yards: routeReach(play.kind, route), sack: clamp((deep ? 7 : 3) + pressure * 7 - blocks * 2, 2, 35),
       pick: clamp((deep ? 15 : 7) + coverage * 14 + pressure * 5, 4, 52),
+      factors: [fit ? 'route matched' : '', blocks ? 'pass protection' : '',
+        rush ? `${rush} ${rush === 1 ? 'blitzer' : 'blitzers'}` : '', coverage ? 'defender coverage' : '', fatigue > 0 ? 'fatigue' : ''].filter(Boolean),
     }
   }
   if (play.kind === 'field-goal') {
     return { chance: Math.round(clamp(96 - ((117 - match.yard) - 30) * 2.15 - count(defense, 'rush-kick') * 9, 16, 96)),
-      yards: 0, sack: 0, pick: 0 }
+      yards: 0, sack: 0, pick: 0, factors: [] }
   }
   const runner = findAthlete(match.athletes, `${match.offense}-o-1`)
   const lane = laneFor(play.kind)
@@ -275,11 +278,11 @@ export function playEstimate(match: Match, play: Play, offense: readonly Command
   const fatigue = Math.max(0, 65 - runner.stamina) * 0.085
   const running = ((runner.finishing ?? 7) - 7) * 0.55
   return { chance: 100, yards: Math.round(clamp(4 + running + lead - gap - fatigue + (play.kind === 'inside' ? -rush * 0.8 : rush * 0.55), -5, 12)),
-    sack: 0, pick: 0 }
+    sack: 0, pick: 0, factors: [] }
 }
 
 export function resolveTurn(match: Match, plans: Plans<Command>) {
-  if (match.rulesVersion !== RULES_VERSION) throw new Error('Unsupported football rules version.')
+  if (match.rulesVersion !== RULES_VERSION && match.rulesVersion !== PREVIOUS_RULES_VERSION) throw new Error('Unsupported football rules version.')
   if (finished(match)) throw new Error('This game is over.')
   validatePlans(match, plans, COMMAND_LIMIT, legalCommands)
   const next = structuredClone(match)
@@ -363,20 +366,24 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     }
   } else if ('target' in play) {
     const receiver = findAthlete(match.athletes, play.target)
+    const factors = match.rulesVersion !== PREVIOUS_RULES_VERSION && estimate.factors.length
+      ? ` · ${estimate.factors.join(', ')}` : ''
+    const completion = `${estimate.chance}% catch chance${factors}`
     if (roll() < estimate.sack) {
       const yards = 4 + Math.floor(roll() * 0.05)
-      emit('ball', `${quarterback.name} is sacked for a loss of ${yards} yards.`)
+      const pressure = match.rulesVersion !== PREVIOUS_RULES_VERSION ? ` (${estimate.sack}% sack chance${factors})` : ''
+      emit('ball', `${quarterback.name} is sacked for a loss of ${yards} yards${pressure}.`)
       advance(-yards)
     } else if (roll() < estimate.chance) {
       const yards = Math.min(100 - match.yard, Math.max(1, estimate.yards + Math.floor(roll() * 0.07) - 3))
-      emit('ball', `${quarterback.name} finds ${receiver.name} for ${yards} yards (${estimate.chance}% catch chance).`)
+      emit('ball', `${quarterback.name} finds ${receiver.name} for ${yards} yards (${completion}).`)
       advance(yards)
     } else if (roll() < estimate.pick) {
       const spot = Math.min(100, match.yard + estimate.yards)
       emit('turnover', `${names[defending]} intercept the pass intended for ${receiver.name}.`)
       giveBall(spot === 100 ? 20 : 100 - spot + Math.floor(roll() * 0.12))
     } else {
-      emit('ball', `${quarterback.name} throws incomplete to ${receiver.name} (${estimate.chance}% catch chance).`)
+      emit('ball', `${quarterback.name} throws incomplete to ${receiver.name} (${completion}).`)
       advance(0)
     }
   } else {

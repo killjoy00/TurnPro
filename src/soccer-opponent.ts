@@ -1,7 +1,8 @@
 import { clamp, distance } from './math.ts'
 import { findAthlete, type Team } from './match.ts'
 import {
-  attackGoal, commandTarget, direction, legalCommands, passEstimate, runDestination, shotEstimate, startsOffside, HALF_TURNS, PITCH,
+  attackGoal, commandTarget, direction, legalCommands, passEstimate, previewPass, runDestination, shotEstimate, startsOffside, HALF_TURNS, PITCH,
+  PREVIOUS_RULES_VERSION,
   type Command, type Match, TURN_LIMIT,
 } from './soccer.ts'
 
@@ -12,6 +13,7 @@ export function planTurn(match: Match, team: Team): Command[] {
   const options = squad.flatMap(player => legalCommands(match, player.id))
   const plan: Command[] = []
   if (holder.team === team) {
+    const legacy = match.rulesVersion === PREVIOUS_RULES_VERSION
     const attack = direction(match, team)
     const passes = options.filter(command => command.kind === 'pass' || command.kind === 'through' || command.kind === 'cross')
     const runs = options.filter(command => command.kind === 'run')
@@ -25,8 +27,9 @@ export function planTurn(match: Match, team: Team): Command[] {
       const setup = command.kind === 'pass' ? undefined : preferredRun(player.id)
       const receive = setup ? runDestination(match, player, setup.target) : player.position
       const lead = command.kind === 'through' ? attack * 4 : 0
-      const arrival = { x: clamp(receive.x + lead, 2.5, PITCH.width - 2.5), y: receive.y }
-      const estimate = passEstimate(match, holder, arrival, command.kind)
+      const projected = legacy ? null : previewPass(match, command, setup ? [setup] : [])
+      const arrival = projected?.destination ?? { x: clamp(receive.x + lead, 2.5, PITCH.width - 2.5), y: receive.y }
+      const estimate = projected ?? passEstimate(match, holder, arrival, command.kind)
       const progress = attack * (arrival.x - holder.position.x)
       const goal = shotEstimate(match, { ...player, position: arrival }).goal
       const value = estimate.chance * 0.84 + progress * 0.9 + goal * 0.5
@@ -34,13 +37,13 @@ export function planTurn(match: Match, team: Team): Command[] {
       return { command, setup, value, progress, chance: estimate.chance }
     }).sort((a, b) => b.value - a.value)
     const forward = rankedPasses.find(({ command, chance, progress }) =>
-      chance >= (command.kind === 'through' ? 70 : 60) && progress >= 5)
+      chance >= (command.kind === 'through' ? (legacy ? 70 : 64) : 60) && progress >= 5)
     const safe = rankedPasses.find(pass => pass.command.kind === 'pass' && pass.chance >= 60)
     const shot = options.find(command => command.kind === 'shoot')
     const carry = options.find(command => command.kind === 'carry')
     const look = shotEstimate(match, holder)
     const pass = forward ?? (look.pressure > 0 ? safe : undefined)
-    const ball = shot && (look.goal >= 21 || match.turn % HALF_TURNS === 0)
+    const ball = shot && (look.goal >= (legacy ? 21 : 16) || match.turn % HALF_TURNS === 0)
       ? shot : pass?.command ?? carry ?? shot ?? safe?.command ?? rankedPasses[0]?.command
     if (ball) plan.push(ball)
     if (ball === pass?.command && pass?.setup) plan.push(pass.setup)

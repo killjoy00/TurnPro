@@ -15,7 +15,7 @@ The prototype is complete when the same packaged build meets these gates:
 | Club development and continuity | Use one roster across a four-sport season. Develop sport skills and shared awareness, manage fatigue, and reload an active fixture with its lineup, training, and committed turns. |
 | Downloadable, testable builds | Automated checks complete all four sports from the same browser file. The Windows and Linux packages each expose all four sports, launch a four-sport match session, and restore a club save. Try the same builds with touch, keyboard, and a controller during playtesting. |
 
-Use these builds for a round of four-sport human playtesting. Collect completion time, confusion about what an order will do, whether the player can explain a decisive play, and whether they choose to play another match. Ask players when they trained a specialist, rested a starter, or used the same athlete in a second sport. Use the results to prioritize tactical tuning and career pacing.
+Use these builds for a round of four-sport human playtesting. Collect completion time, confusion about what an order will do, whether the player can explain a decisive play, and whether they choose to play another match. Ask players when they trained a specialist, rested a starter, or used the same athlete in a second sport. Use the results to prioritize tactical tuning and career pacing. [Playtest route and automated balance results](PLAYTEST.md)
 
 ## What players do
 
