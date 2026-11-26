@@ -1,5 +1,6 @@
 import type { Point } from './math.ts'
 import type { Athletics } from './athletics.ts'
+import type { Signature } from './athlete-abilities.ts'
 
 export type Team = 0 | 1
 export const TEAMS = ['Comets', 'Forge'] as const
@@ -21,6 +22,7 @@ export interface AthleteBuild {
   defense: number
   keeping: number
   technique?: Technique
+  signature?: Signature
   athletics?: Athletics
 }
 
@@ -41,6 +43,7 @@ export interface AthleteSnapshot {
   awareness?: number
   defense?: number
   technique?: Technique
+  signature?: Signature
   athletics?: Athletics
 }
 

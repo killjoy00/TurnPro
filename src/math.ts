@@ -21,13 +21,17 @@ export function stepToward(from: Point, to: Point, maxDistance: number): Point {
   }
 }
 
-export function distanceToSegment(point: Point, start: Point, end: Point): number {
+export function closestPointOnSegment(point: Point, start: Point, end: Point): Point {
   const dx = end.x - start.x
   const dy = end.y - start.y
   const squaredLength = dx * dx + dy * dy
-  if (squaredLength === 0) return distance(point, start)
+  if (squaredLength === 0) return start
   const fraction = clamp(((point.x - start.x) * dx + (point.y - start.y) * dy) / squaredLength, 0, 1)
-  return distance(point, { x: start.x + dx * fraction, y: start.y + dy * fraction })
+  return { x: start.x + dx * fraction, y: start.y + dy * fraction }
+}
+
+export function distanceToSegment(point: Point, start: Point, end: Point): number {
+  return distance(point, closestPointOnSegment(point, start, end))
 }
 
 export function seededRandom(seed: number) {

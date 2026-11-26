@@ -16,6 +16,12 @@ Try the first coached play without hints beyond the game. Rotate the starting sp
 
 For each sport, note the first time you had to guess what to do, one result you can explain, and whether you would play another match. Reopen **Playtest feedback** and select **Download feedback** when done. If you already have a club, export its save before using a fresh test profile.
 
+## Athlete builds
+
+Give a basketball or soccer athlete three XP in that sport, set their specialty to Finisher, and use the available weekly session to learn **Cut and finish**. In a fixture, queue the cut and a teammate's pass. Check whether the order preview and the play-by-play explain why a shot happened or why the move stalled.
+
+In a later week, switch the same athlete to Defender and learn **Jump the lane**. Equip it in place of Cut and finish. Leave the defender unassigned near the corridor to a likely receiver, then try another turn with an explicit defensive order. Check whether the reaction, stamina cost, and recovery tradeoff are clear. Compare the same athlete in both builds and record when you would choose each.
+
 ## Automated baseline and tuning
 
 Run `npm run simulate:playtest -- 500 20` for 500 seeded computer matches per sport and 20 seeded four-sport regular seasons per lineup policy. The club policies use the same recruit, fixtures, and seeds. Rotation swaps in the freshest available athlete when a slot permits it. The third policy also spends the weekly session on recovery when an upcoming starter can use it. An AI result can expose a balance issue. Human playtests establish whether the choices are clear, fair, and worth repeating.

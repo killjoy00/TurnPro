@@ -323,6 +323,41 @@ try {
   assert.equal(await career.locator('.timeline').first().innerText(), footballLog)
   assert.deepEqual(errors, [])
 
+  const builds = await browser.newPage({ reducedMotion: 'reduce', viewport: { width: 1280, height: 800 } })
+  const buildErrors = []
+  builds.on('pageerror', error => buildErrors.push(error.message))
+  await builds.goto(game)
+  const trainingClub = createClub('all')
+  trainingClub.roster.find(player => player.id === 'vale').xp.basketball = 3
+  const previousSave = { ...trainingClub, version: 5,
+    roster: trainingClub.roster.map(({ learned, signature, ...player }) => player) }
+  await builds.evaluate(save => localStorage.setItem('turn-pro-club-v1', JSON.stringify(save)), previousSave)
+  await builds.reload()
+  await builds.getByRole('button', { name: 'Club season' }).click()
+  await builds.getByRole('button', { name: /^Vale Finisher/ }).click()
+  const signature = builds.getByRole('combobox', { name: 'Basketball signature for Vale' })
+  assert.equal(await signature.isDisabled(), true)
+  await builds.getByRole('button', { name: 'Learn cut and finish for Basketball' }).click()
+  assert.equal(await signature.inputValue(), 'cut-and-finish')
+  assert.equal(await builds.locator('[data-signature="basketball"]:focus').count(), 1)
+  assert.equal(await builds.getByRole('button', { name: 'Train Basketball', exact: true }).isDisabled(), true)
+  await builds.getByRole('combobox', { name: 'Specialty for Vale' }).selectOption('Defender')
+  assert.equal(await signature.inputValue(), 'cut-and-finish')
+  await signature.selectOption('')
+  await signature.selectOption('cut-and-finish')
+  await builds.getByRole('button', { name: 'Play fixture' }).click()
+  await builds.getByRole('button', { name: /^Pass: Vale/ }).click()
+  await builds.getByRole('button', { name: /Vale, 100 stamina/ }).click()
+  await builds.getByRole('button', { name: /^Cut and finish to Left wing/ }).click()
+  await builds.getByRole('button', { name: 'Commit turn' }).click()
+  const builtTurn = await builds.locator('.timeline').first().innerText()
+  assert.match(builtTurn, /Vale · Cut and finish to Left wing/)
+  await builds.reload()
+  await builds.getByRole('button', { name: 'Continue saved fixture' }).click()
+  assert.equal(await builds.locator('.timeline').first().innerText(), builtTurn)
+  assert.deepEqual(buildErrors, [])
+  await builds.close()
+
   const mobile = await browser.newPage({
     reducedMotion: 'reduce',
     viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true,

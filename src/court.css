@@ -223,6 +223,11 @@ h2 { font-size: 1rem; font-weight: 780; letter-spacing: .016em; }
 .sport-stats { list-style: none; padding: 0; }
 .sport-stats li { border-bottom: 1px solid var(--line); padding: 5px 0; font-size: .86rem; }
 .sport-stats small { display: block; }
+.signature-options { margin-block: .4rem; }
+.signature-options summary { cursor: pointer; }
+.signature-lesson { padding-block: .375rem; }
+.signature-lesson span { display: block; }
+.signature-lesson button { margin-top: .25rem; }
 .athlete-traits { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .athlete-traits li { padding: 6px 8px; border: 1px solid var(--line); font-size: .82rem; }
 .athlete-traits small { display: block; color: var(--muted); }

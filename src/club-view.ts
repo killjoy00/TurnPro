@@ -1,8 +1,9 @@
 import {
-  availableProspects, baseSkill, clubAthlete, createClub, development, keeperSlot, MAX_FILM_BONUS, nextFixture, nextSeason, profile, ratings, ROLES,
+  availableProspects, baseSkill, canLearnSignature, clubAthlete, createClub, development, keeperSlot, MAX_FILM_BONUS, nextFixture, nextSeason, profile, ratings, ROLES,
   roleName, roleProgress, SPECIALTIES, TECHNIQUES, unlocked, unlockRequirement,
   type Club, type SeasonMode, type Specialty, type Sport, type TrainingFocus,
 } from './club.ts'
+import { SIGNATURES, SIGNATURE_XP, supportsSignatures, type Signature } from './athlete-abilities.ts'
 import { ATHLETIC_TRAITS, isAthleticTrait, MAX_TRAIT, type AthleticTrait } from './athletics.ts'
 import { DEFENSE_NAMES } from './opponent.ts'
 import { SHAPE_NAMES } from './soccer.ts'
@@ -19,6 +20,8 @@ export interface ClubView {
   train(id: string, focus: TrainingFocus): void
   specialize(id: string, choice: Specialty): void
   equip(id: string, sport: Sport, technique: Technique | null): void
+  learnSignature(id: string, sport: Sport, signature: Signature): void
+  equipSignature(id: string, sport: Sport, signature: Signature | null): void
   changeStarter(sport: Sport, slot: number, id: string): void
   exportSave(): void
   importSave(file: File): Promise<void>
@@ -100,6 +103,28 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       }).join('')
       return `<label class="lineup-choice"><span>${label}</span><select data-slot="${slot}" aria-label="${label} starter, slot ${slot + 1}" ${editable ? '' : 'disabled'}>${choices}</select></label>`
     }).join('')
+    function signatureChoices(sport: Sport) {
+      if (!supportsSignatures(sport)) return ''
+      const equipped = player.signature[sport]
+      const known = player.learned[sport]
+      const options = known.map(key => `<option value="${key}" ${equipped === key ? 'selected' : ''}>
+        ${SIGNATURES[key].label} · ${SIGNATURES[key].slot}</option>`).join('')
+      const courses = (Object.keys(SIGNATURES) as Signature[]).filter(key => !known.includes(key))
+      const available = courses.filter(key => canTrain && allowedSports.includes(sport) && canLearnSignature(player, sport, key))
+      const lessons = courses.map(key => {
+        const ability = SIGNATURES[key]
+        return `<div class="signature-lesson"><small><b>${ability.label}</b> · ${ability.slot} · ${ability.specialty} · ${SIGNATURE_XP} XP
+          <span>${ability.detail}</span></small>
+          ${available.includes(key) ? `<button type="button" class="top-action" data-learn-signature="${key}" data-sport="${sport}">Learn ${ability.label.toLowerCase()} for ${SPORT[sport]}</button>` : ''}</div>`
+      }).join('')
+      return `<div class="signature-options">
+        <label class="lineup-choice">Signature <select data-signature="${sport}" aria-label="${SPORT[sport]} signature for ${info.name}" ${editable && known.length ? '' : 'disabled'}>
+          <option value="">No signature equipped</option>${options}
+        </select></label>
+        ${equipped ? `<small>${SIGNATURES[equipped].detail}</small>` : ''}
+        ${lessons ? `<details ${available.length ? 'open' : ''}><summary>Learn signatures</summary>${lessons}</details>` : ''}
+      </div>`
+    }
     const stats = SPORTS.map(sport => {
       const stat = ratings(player, sport)
       const options = (Object.keys(TECHNIQUES) as Technique[]).map(key => {
@@ -117,10 +142,11 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       return `<li><b>${SPORT[sport]}</b> · ${player.xp[sport]} XP · +${development(player, sport)} skill
         <small>Passing ${stat.passing} · Finishing ${stat.finishing} · Defensive bonus ${stat.defense}${keeperSlot(sport) >= 0 && stat.keeping ? ` · Keeping ${stat.keeping}` : ''}</small>
         ${roles}
-        <label class="lineup-choice">Ability <select data-ability="${sport}" aria-label="${SPORT[sport]} ability for ${info.name}" ${editable ? '' : 'disabled'}>
+        <label class="lineup-choice">Passive <select data-ability="${sport}" aria-label="${SPORT[sport]} ability for ${info.name}" ${editable ? '' : 'disabled'}>
           <option value="">No ability equipped</option>${options}
         </select></label>
-        ${stat.technique ? `<small>${TECHNIQUES[stat.technique].detail}</small>` : ''}</li>`
+        ${stat.technique ? `<small>${TECHNIQUES[stat.technique].detail}</small>` : ''}
+        ${signatureChoices(sport)}</li>`
     }).join('')
     const prospects = availableProspects(club)
     const sign = prospects.length && editable
@@ -194,7 +220,9 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
           <small>${ATHLETIC_TRAITS[trait].detail}</small></li>`).join('')}</ul>
         <label class="lineup-choice">Specialty <select data-specialty aria-label="Specialty for ${info.name}" ${editable ? '' : 'disabled'}>
           ${Object.keys(SPECIALTIES).map(key => `<option ${key === player.specialty ? 'selected' : ''}>${key}</option>`).join('')}</select></label>
-        <p class="muted">${SPECIALTIES[player.specialty]}</p><ul class="sport-stats">${stats}</ul>
+        <p class="muted">${SPECIALTIES[player.specialty]}</p>
+        <p class="muted">Learning a signature uses the weekly training session. You keep it after changing specialty.</p>
+        <ul class="sport-stats">${stats}</ul>
         ${editable ? `<p class="muted">${canTrain ? 'One training session available this week.' : 'Training used this week.'}</p>
         <div class="club-actions">${allowedSports.map(sport => `<button data-train="${sport}" ${canTrain ? '' : 'disabled'}>Train ${SPORT[sport]}</button>`).join('')}
         <button data-train="film" ${canTrain && player.film < MAX_FILM_BONUS ? '' : 'disabled'}>Study film (+1 awareness)</button>
@@ -245,6 +273,10 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       controller.recruit(data.recruit)
       athlete = data.recruit
       message = `${profile(athlete).name} joined the club.`
+    } else if (data.learnSignature && data.sport) {
+      const key = data.learnSignature as Signature
+      controller.learnSignature(athlete, data.sport as Sport, key)
+      message = `${profile(athlete).name} learned ${SIGNATURES[key].label} for ${SPORT[data.sport as Sport]}.`
     } else if (data.train) {
       const focus = data.train as TrainingFocus
       controller.train(athlete, focus)
@@ -255,6 +287,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
             : `${name} earned 3 ${SPORT[focus]} XP.`
     }
     render()
+    if (data.learnSignature) container.querySelector<HTMLSelectElement>(`[data-signature="${data.sport}"]`)?.focus()
     if (data.season) container.querySelector<HTMLButtonElement>('[data-action="play"]')?.focus()
     if (data.athlete || data.lineup) container.querySelector<HTMLButtonElement>('[aria-pressed="true"]' +
       (data.athlete ? `[data-athlete="${athlete}"]` : `[data-lineup="${lineupSport}"]`))?.focus()
@@ -274,6 +307,8 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         message = 'Club save loaded.'
       } else if (input.dataset.slot !== undefined) {
         controller.changeStarter(lineupSport, Number(input.dataset.slot), input.value)
+      } else if (input.dataset.signature) {
+        controller.equipSignature(athlete, input.dataset.signature as Sport, input.value ? input.value as Signature : null)
       } else if (input.dataset.ability) {
         controller.equip(athlete, input.dataset.ability as Sport, input.value ? input.value as Technique : null)
       } else if (input.dataset.specialty !== undefined) {
@@ -283,6 +318,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       message = 'That change could not be applied. Check the save file or lineup.'
     }
     render()
+    if (input.dataset.signature) container.querySelector<HTMLSelectElement>(`[data-signature="${input.dataset.signature}"]`)?.focus()
   }, { signal })
   render()
 }

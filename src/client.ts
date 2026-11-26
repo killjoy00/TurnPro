@@ -8,7 +8,7 @@ import { mountGame, type SeasonMatch, type SportView } from './game-view.ts'
 import { DEFENSE_NAMES, planTurn as basketballAI, type DefenseStyle } from './opponent.ts'
 import { planTurn as soccerAI } from './soccer-opponent.ts'
 import { drawBasketball, drawFootball, drawHockey, drawSoccer } from './surfaces.ts'
-import { equip, readClub, recruit, setStarter, specialize, train, type Club } from './club.ts'
+import { equip, equipSignature, learnSignature, readClub, recruit, setStarter, specialize, train, type Club } from './club.ts'
 import { beginClubFixture, openClubFixture, saveClubTurn } from './club-fixture.ts'
 import { mountClub } from './club-view.ts'
 import { teamNames, type MatchSnapshot, type PlanCommand } from './match.ts'
@@ -39,13 +39,14 @@ const basketballView: SportView<basketball.Match, basketball.Command> = {
   label: basketball.commandLabel,
   stamina: command => basketball.ACTIONS[command.kind].stamina,
   preview(match, command) {
+    if (command.kind === 'cut-and-finish') return 'Pass from a teammate to trigger the shot · '
     if (command.kind !== 'shoot') return ''
     const shot = basketball.shotEstimate(match, basketball.athleteById(match, command.athlete))
     return `${shot.points} pt · ~${shot.chance}% now · `
   },
   noOrders: () => 'Recover stamina on base assignments this turn.',
   previewTarget(match, command) {
-    if (command.kind === 'cut') return basketball.LANDMARKS[command.target]
+    if (command.kind === 'cut' || command.kind === 'cut-and-finish') return basketball.LANDMARKS[command.target]
     return 'target' in command ? basketball.athleteById(match, command.target).position : undefined
   },
   opponent: basketballAI,
@@ -93,6 +94,7 @@ const soccerView: SportView<soccer.Match, soccer.Command> = {
     if (command.kind === 'shoot') {
       return `~${soccer.shotEstimate(match, player).goal}% goal now · `
     }
+    if (command.kind === 'cut-and-finish') return 'Pass from a teammate to trigger the shot · '
     if ('target' in command && command.kind !== 'run') {
       const pass = soccer.previewPass(match, command, plan)
       if (pass.offside) return 'Offside · '
@@ -105,7 +107,7 @@ const soccerView: SportView<soccer.Match, soccer.Command> = {
     ? 'Your keeper tracks the ball and attempts saves automatically.'
     : 'Recover stamina while your team keeps its shape.',
   previewTarget(match, command, plan) {
-    return 'target' in command && command.kind !== 'run'
+    return 'target' in command && command.kind !== 'run' && command.kind !== 'cut-and-finish'
       ? soccer.previewPass(match, command, plan).destination : soccer.commandTarget(match, command)
   },
   opponent: soccerAI,
@@ -369,6 +371,8 @@ function showClub() {
     recruit: id => updateClub(recruit(club!, id)),
     train: (id, sport) => updateClub(train(club!, id, sport)),
     equip: (id, sport, technique) => updateClub(equip(club!, id, sport, technique)),
+    learnSignature: (id, sport, signature) => updateClub(learnSignature(club!, id, sport, signature)),
+    equipSignature: (id, sport, signature) => updateClub(equipSignature(club!, id, sport, signature)),
     specialize: (id, choice) => updateClub(specialize(club!, id, choice)),
     changeStarter: (sport, slot, id) => updateClub(setStarter(club!, sport, slot, id)),
     exportSave() {

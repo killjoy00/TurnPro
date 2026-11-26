@@ -3,6 +3,7 @@ import {
   type AthleteSnapshot, type BaseAssignment, type MatchSnapshot, type PlanCommand, type Plans, type Team, type TurnEvent,
 } from './match.ts'
 import type { Point } from './math.ts'
+import { SIGNATURES } from './athlete-abilities.ts'
 import { TECHNIQUES } from './club.ts'
 import type { LoggedTurn } from './club-fixture.ts'
 import { trackMatch } from './playtest.ts'
@@ -282,6 +283,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
       </div><p class="instructions">${instruction}</p>
       ${showAssignments && athlete.team === 0 && !active ? `<p class="base-assignment">${sport.baseAssignment(match, athlete.id).label}</p>` : ''}
       ${athlete.technique ? `<p class="practice-ability">${TECHNIQUES[athlete.technique].label} · ${TECHNIQUES[athlete.technique].detail}</p>` : ''}
+      ${athlete.signature ? `<p class="practice-ability">${SIGNATURES[athlete.signature].label} · ${SIGNATURES[athlete.signature].detail}</p>` : ''}
       <ul class="options" ${commands.length ? '' : 'hidden'}>${commands.map((command, index) => {
         const label = sport.label(match, command)
         const detail = sport.preview(match, command, plan)

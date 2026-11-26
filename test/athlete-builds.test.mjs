@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { UNTRAINED } from '../src/athletics.ts'
-import { clubAthlete, createClub, equip, ratings, readClub, settleFixture, setStarter, train } from '../src/club.ts'
+import { clubAthlete, createClub, equip, equipSignature, learnSignature, ratings, readClub, settleFixture, setStarter, specialize, train } from '../src/club.ts'
 import { beginClubFixture, openClubFixture, saveClubTurn } from '../src/club-fixture.ts'
 import { SPORTS } from '../src/league.ts'
 import * as basketball from '../src/basketball.ts'
 import * as soccer from '../src/soccer.ts'
 import * as hockey from '../src/hockey.ts'
 import * as football from '../src/football.ts'
+import { planTurn as basketballAI } from '../src/opponent.ts'
 import { planTurn as footballAI } from '../src/football-opponent.ts'
 
 test('shared athletic training uses a weekly session and talents unlock per sport', () => {
@@ -116,4 +117,102 @@ test('v4 club saves initialize new training and positions with their fixture int
   const migrated = readClub(JSON.stringify(old))
   assert.deepEqual(migrated, original)
   assert.deepEqual(openClubFixture(migrated), openClubFixture(original))
+})
+
+test('the same athlete can apprentice in two specialties and swap learned signatures beside a passive', () => {
+  let club = createClub('all')
+  const reed = clubAthlete(club, 'reed')
+  assert.throws(() => equipSignature(club, 'reed', 'basketball', 'cut-and-finish'), /before equipping/)
+  assert.throws(() => learnSignature(club, 'reed', 'basketball', 'cut-and-finish'), /cannot be learned/)
+  reed.xp.basketball = 3
+  reed.xp.soccer = 3
+  club = equip(club, 'reed', 'basketball', 'second-wind')
+  club = specialize(club, 'reed', 'Finisher')
+  club = learnSignature(club, 'reed', 'basketball', 'cut-and-finish')
+  assert.throws(() => train(club, 'reed', 'speed'), /used this week/)
+  assert.throws(() => equipSignature(club, 'reed', 'soccer', 'cut-and-finish'), /before equipping/)
+  assert.equal(ratings(clubAthlete(club, 'reed'), 'basketball').signature, 'cut-and-finish')
+
+  for (const score of [[2, 0], [1, 0]]) {
+    club = beginClubFixture(club)
+    assert.throws(() => equipSignature(club, 'reed', 'basketball', null), /current fixture/)
+    club = settleFixture(club, score, openClubFixture(club).match.athletes)
+  }
+  club = specialize(club, 'reed', 'Defender')
+  club = learnSignature(club, 'reed', 'basketball', 'jump-lane')
+  assert.equal(ratings(clubAthlete(club, 'reed'), 'basketball').signature, 'cut-and-finish')
+  club = equipSignature(club, 'reed', 'basketball', 'jump-lane')
+  const saved = readClub(JSON.stringify(club))
+  assert.deepEqual(clubAthlete(saved, 'reed').learned.basketball, ['cut-and-finish', 'jump-lane'])
+  assert.equal(ratings(clubAthlete(saved, 'reed'), 'basketball').signature, 'jump-lane')
+  assert.equal(ratings(clubAthlete(saved, 'reed'), 'basketball').technique, 'second-wind')
+  assert.equal(ratings(clubAthlete(saved, 'reed'), 'soccer').signature, undefined)
+
+  const invalid = structuredClone(saved)
+  clubAthlete(invalid, 'reed').signature.hockey = 'jump-lane'
+  assert.throws(() => readClub(JSON.stringify(invalid)), /roster/)
+  clubAthlete(saved, 'reed').learned.basketball = []
+  assert.throws(() => readClub(JSON.stringify(saved)), /roster/)
+})
+
+test('a cut and finish unlocks a scoring sequence from an off-ball order in basketball and soccer', () => {
+  for (const { engine, match, passer, receiver, base } of [
+    { engine: basketball, match: basketball.createMatch(0), passer: '0-0', receiver: '0-1', base: 'cut' },
+    { engine: soccer, match: soccer.createCrossingPractice(), passer: '0-8', receiver: '0-9', base: 'run' },
+  ]) {
+    if (engine === soccer) match.randomState = 1
+    const pass = { athlete: passer, kind: 'pass', target: receiver }
+    const cut = { athlete: receiver, kind: base, target: 0 }
+    const combined = { ...cut, kind: 'cut-and-finish' }
+    const standard = engine.resolveTurn(match, [[pass, cut], []])
+    assert.equal(standard.match.holder, receiver)
+    assert.equal(standard.match.score[0], 0)
+    assert.throws(() => engine.resolveTurn(match, [[pass, combined], []]), /unavailable/)
+
+    const runner = engine.athleteById(match, receiver)
+    runner.signature = 'cut-and-finish'
+    const noPass = engine.resolveTurn(match, [[combined], []])
+    assert.equal(noPass.match.score[0], 0)
+    const trained = engine.resolveTurn(match, [[pass, combined], []])
+    assert.ok(trained.events.some(event => /cuts.*shoots/.test(event.text)))
+    assert.ok(trained.match.score[0] > 0)
+    assert.deepEqual(engine.resolveTurn(JSON.parse(JSON.stringify(match)), [[pass, combined], []]), trained)
+
+    runner.stamina = 15
+    assert.ok(!engine.legalCommands(match, runner.id).some(order => order.kind === 'cut-and-finish'))
+  }
+})
+
+test('an unassigned lane reader changes a completed pass into a turnover at a stamina cost', () => {
+  for (const { engine, match, passer, target, defender, assignment } of [
+    { engine: basketball, match: basketball.createMatch(1), passer: '0-0', target: '0-3',
+      defender: '1-2', assignment: 'stay' },
+    { engine: soccer, match: soccer.createCrossingPractice(), passer: '0-8', target: '0-6',
+      defender: '1-9', assignment: 'hold' },
+  ]) {
+    match.randomState = 1
+    const pass = { athlete: passer, kind: 'pass', target }
+    assert.equal(engine.resolveTurn(match, [[pass], []]).match.holder, target)
+    const reader = engine.athleteById(match, defender)
+    reader.signature = 'jump-lane'
+    const reaction = engine.resolveTurn(match, [[pass], []])
+    assert.ok(reaction.events.some(event => /jumps the passing lane/.test(event.text)))
+    assert.ok(reaction.events.some(event => event.kind === 'turnover'))
+    assert.equal(engine.athleteById(reaction.match, defender).stamina, 92)
+    const ordered = engine.resolveTurn(match, [[pass], [{ athlete: defender, kind: assignment }]])
+    assert.ok(!ordered.events.some(event => /jumps the passing lane/.test(event.text)))
+    const noPass = engine.resolveTurn(match, [[], []])
+    assert.deepEqual(engine.athleteById(noPass.match, defender).stamina, 100)
+  }
+})
+
+test('v5 pending fixtures retain prior ratings, plans, and outcomes after signature migration', () => {
+  const club = beginClubFixture(createClub('basketball'))
+  const session = openClubFixture(club)
+  const win = basketball.resolveTurn(session.match, [[], basketballAI(session.match, 1, session.defense)])
+  const saved = saveClubTurn(club, [], win.match)
+  const old = { ...saved, version: 5, roster: saved.roster.map(({ learned, signature, ...player }) => player) }
+  const migrated = readClub(JSON.stringify(old))
+  assert.deepEqual(migrated, saved)
+  assert.deepEqual(openClubFixture(migrated), openClubFixture(saved))
 })
