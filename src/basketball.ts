@@ -36,6 +36,7 @@ export interface Match extends MatchSnapshot {
 export type Command =
   | { athlete: string; kind: 'drive' | 'finish' | 'shoot' | 'catch-shoot' | 'screen' | 'protect' | 'switch' | 'help' | 'stay' }
   | { athlete: string; kind: 'pass'; target: string }
+  | { athlete: string; kind: 'relay'; target: string }
   | { athlete: string; kind: 'kickout'; target: string }
   | { athlete: string; kind: 'mark' | 'deny'; target: string }
   | { athlete: string; kind: 'cut'; target: number }
@@ -43,6 +44,7 @@ export type Command =
 
 export const ACTIONS = {
   pass: { label: 'Pass', stamina: 6 },
+  relay: { label: 'Relay', stamina: 12 },
   shoot: { label: 'Shoot', stamina: 10 },
   'catch-shoot': { label: 'Catch and shoot', stamina: 10 },
   drive: { label: 'Drive', stamina: 14 },
@@ -141,6 +143,11 @@ export function legalCommands(match: Match, id: string): Command[] {
       }
     }
   } else if (athlete.team === holder.team) {
+    if (athlete.signature === 'relay') {
+      for (const teammate of teammates) {
+        if (teammate.id !== holder.id) commands.push({ athlete: id, kind: 'relay', target: teammate.id })
+      }
+    }
     if (distance(athlete.position, COURT.hoop) <= 34) commands.push({ athlete: id, kind: 'catch-shoot' })
     if (distance(athlete.position, holder.position) <= 15) commands.push({ athlete: id, kind: 'screen' })
     LANDMARKS.forEach((point, target) => {
@@ -248,6 +255,7 @@ function assignment(match: Match, athlete: Athlete, command: Command | undefined
     case 'mark': return stepToward(athleteById(match, command.target).position, COURT.hoop, 2.4)
     case 'deny': return stepToward(athleteById(match, command.target).position, holder.position, 4)
     case 'pass':
+    case 'relay':
     case 'shoot':
     case 'catch-shoot':
     case 'screen': return athlete.position
@@ -375,10 +383,10 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   }
 
   let reacted: string | undefined
-  function passBall(target: string, kickout: boolean) {
+  function passBall(passer: Athlete, target: string, kickout: boolean, allowRelay = true) {
     const receiver = athleteById(next, target)
-    const reaction = laneReaction(next.athletes.filter(athlete => athlete.team === defense
-      && !commands.has(athlete.id) && !screened.has(athlete.id)), holder.position, receiver.position, reach)
+    const reaction = reacted === undefined ? laneReaction(next.athletes.filter(athlete => athlete.team === defense
+      && !commands.has(athlete.id) && !screened.has(athlete.id)), passer.position, receiver.position, reach) : undefined
     if (reaction) {
       const { athlete, point } = reaction
       const from = athlete.position
@@ -389,20 +397,26 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       }
     }
     const lane = next.athletes.filter(athlete => athlete.team === defense && !screened.has(athlete.id)
-      && distanceToSegment(athlete.position, holder.position, receiver.position) <= 3)
-    const range = distance(holder.position, receiver.position)
-    const chance = clamp(100 - range * 0.65 + (holder.passing - 6) * 3
+      && distanceToSegment(athlete.position, passer.position, receiver.position) <= 3)
+    const range = distance(passer.position, receiver.position)
+    const chance = clamp(100 - range * 0.65 + (passer.passing - 6) * 3
       - lane.reduce((cost, defender) => cost + 17 + (defender.defense ?? 0) + (defender.technique === 'read-play' ? 4 : 0), 0)
-      + ((holder.awareness ?? 6) - 6) * 1.5
-      + (lane.length > 0 && holder.technique === 'thread-pass' ? 12 : 0) - fatiguePenalty(holder, 60, 0.3), 15, 98)
+      + ((passer.awareness ?? 6) - 6) * 1.5
+      + (lane.length > 0 && passer.technique === 'thread-pass' ? 12 : 0) - fatiguePenalty(passer, 60, 0.3), 15, 98)
     const passDetail = `${Math.round(chance)}% completion, ${lane.length} ${lane.length === 1 ? 'defender' : 'defenders'} in the lane`
     if (random.next() * 100 < chance) {
       next.holder = receiver.id
       const pressure = shotEstimate(next, receiver, screened).pressure
       const read = kickout ? (pressure > 0 ? ' with the shooter covered' : ' for an open look') : ''
-      emit('ball', `${holder.name} ${kickout ? 'kicks out to' : 'finds'} ${receiver.name}${read} (${passDetail}).`,
-        { type: 'ball', action: 'pass', from: holder.position, to: receiver.position, holder: receiver.id })
-      const order = commands.get(receiver.id)?.kind
+      emit('ball', `${passer.name} ${kickout ? 'kicks out to' : 'finds'} ${receiver.name}${read} (${passDetail}).`,
+        { type: 'ball', action: 'pass', from: passer.position, to: receiver.position, holder: receiver.id })
+      const nextOrder = commands.get(receiver.id)
+      if (allowRelay && nextOrder?.kind === 'relay') {
+        emit('ball', `${receiver.name} relays the ball to ${athleteById(next, nextOrder.target).name}.`)
+        passBall(receiver, nextOrder.target, false, false)
+        return
+      }
+      const order = nextOrder?.kind
       if (order === 'cut-and-finish' && distance(receiver.position, COURT.hoop) > 34) {
         emit('ball', `${receiver.name} catches outside shooting range and holds the ball.`)
       } else if (order === 'catch-shoot' || order === 'cut-and-finish') {
@@ -414,9 +428,9 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       const interceptor = lane[0]
       const message = interceptor
         ? `${interceptor.name} intercepts the pass (${passDetail}).`
-        : `${holder.name}'s pass gets away (${passDetail}).`
+        : `${passer.name}'s pass gets away (${passDetail}).`
       emit('turnover', message, {
-        type: 'ball', action: interceptor ? 'interception' : 'pass', from: holder.position,
+        type: 'ball', action: interceptor ? 'interception' : 'pass', from: passer.position,
         to: interceptor?.position ?? receiver.position, holder: interceptor?.id,
       })
       changePossession('After the turnover,')
@@ -470,7 +484,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   } else {
     if (pressure.length > 0) emit('ball', `${holder.name} keeps control under pressure (${Math.round(stripChance)}% turnover risk).`)
     if (ballCommand?.kind === 'pass' || ballCommand?.kind === 'kickout') {
-      passBall(ballCommand.target, ballCommand.kind === 'kickout')
+      passBall(holder, ballCommand.target, ballCommand.kind === 'kickout')
     } else if (ballCommand?.kind === 'shoot' || (ballCommand?.kind === 'finish' && distance(holder.position, COURT.hoop) <= 17)) {
       takeShot(holder)
     } else if (ballCommand?.kind === 'finish') {

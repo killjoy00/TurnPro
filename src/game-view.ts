@@ -71,7 +71,7 @@ interface PracticeStep {
 export interface SeasonMatch<S extends MatchSnapshot, C extends PlanCommand> {
   match: S
   history: LoggedTurn[]
-  saveTurn(orders: readonly C[], match: S, formation?: Formation): void
+  saveTurn(orders: readonly C[], match: S, formation?: Formation): readonly string[]
 }
 
 export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
@@ -95,6 +95,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   let steps: readonly PracticeStep[] = []
   let coached = false
   let guidedMatch = false
+  let masteryMilestones: readonly string[] = []
   let guidedStep: PracticeStep | undefined
   const matchesStep = (order: C, step: PracticeStep) =>
     order.athlete === step.athlete && order.kind === step.kind && order.target === step.target
@@ -259,7 +260,10 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
       assignmentToggle.disabled = true
       checklist.hidden = true
       actions.innerHTML = season
-        ? '<p class="instructions">Fixture recorded. Return to the club to see the result and prepare for the next match.</p>'
+        ? `<p class="instructions">Fixture recorded. Return to the club to prepare for the next match.</p>
+          ${masteryMilestones.length ? `<details class="technical-options">
+          <summary>Mastery milestones · ${masteryMilestones.length}</summary><ul>
+          ${masteryMilestones.map(milestone => `<li>${milestone}</li>`).join('')}</ul></details>` : ''}`
         : guidedMatch ? '<div class="guided-result"><p class="instructions">Match complete. Start a club season to train athletes and play fixtures that count toward the league.</p><button type="button" class="top-action" data-guided-club>Open club season</button></div>'
           : '<p class="instructions">Review the play-by-play or start a new match.</p>'
       commit.disabled = true
@@ -402,7 +406,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     const practicing = steps.length > 0
     const opponent = sport.opponent(match, 1)
     const resolution = sport.resolveTurn(match, [plan, opponent])
-    season?.saveTurn(plan, resolution.match, sport.formation?.current(match))
+    masteryMilestones = season?.saveTurn(plan, resolution.match, sport.formation?.current(match)) ?? []
     const focusWasInMatch = element('match-screen').contains(document.activeElement)
     if (!motion.matches && resolution.events.some(event => event.cue && event.cue.type !== 'plan')) {
       playback = new AbortController()

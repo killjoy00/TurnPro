@@ -8,8 +8,9 @@ import { mountGame, type SeasonMatch, type SportView } from './game-view.ts'
 import { DEFENSE_NAMES, planTurn as basketballAI, type DefenseStyle } from './opponent.ts'
 import { planTurn as soccerAI } from './soccer-opponent.ts'
 import { drawBasketball, drawFootball, drawHockey, drawSoccer } from './surfaces.ts'
-import { equip, equipSignature, learnSignature, readClub, recruit, setStarter, specialize, train, type Club } from './club.ts'
+import { equip, equipSignature, learnSignature, profile, readClub, recruit, setStarter, specialize, train, trainTechnical, type Club } from './club.ts'
 import { beginClubFixture, openClubFixture, saveClubTurn } from './club-fixture.ts'
+import { specialtyRank } from './progression.ts'
 import { mountClub } from './club-view.ts'
 import { teamNames, type MatchSnapshot, type PlanCommand } from './match.ts'
 import { installGamepad } from './gamepad.ts'
@@ -40,6 +41,7 @@ const basketballView: SportView<basketball.Match, basketball.Command> = {
   stamina: command => basketball.ACTIONS[command.kind].stamina,
   preview(match, command) {
     if (command.kind === 'cut-and-finish') return 'Pass from a teammate to trigger the shot · '
+    if (command.kind === 'relay') return 'Pass to this athlete to trigger the relay · '
     if (command.kind !== 'shoot') return ''
     const shot = basketball.shotEstimate(match, basketball.athleteById(match, command.athlete))
     return `${shot.points} pt · ~${shot.chance}% now · `
@@ -95,7 +97,8 @@ const soccerView: SportView<soccer.Match, soccer.Command> = {
       return `~${soccer.shotEstimate(match, player).goal}% goal now · `
     }
     if (command.kind === 'cut-and-finish') return 'Pass from a teammate to trigger the shot · '
-    if ('target' in command && command.kind !== 'run') {
+    if (command.kind === 'relay') return 'Pass to this athlete to trigger the relay · '
+    if (soccer.isPass(command)) {
       const pass = soccer.previewPass(match, command, plan)
       if (pass.offside) return 'Offside · '
       const lane = pass.defenders.length === 0 ? 'Clear' : pass.defenders.length === 1 ? 'Guarded' : 'Crowded'
@@ -107,7 +110,7 @@ const soccerView: SportView<soccer.Match, soccer.Command> = {
     ? 'Your keeper tracks the ball and attempts saves automatically.'
     : 'Recover stamina while your team keeps its shape.',
   previewTarget(match, command, plan) {
-    return 'target' in command && command.kind !== 'run' && command.kind !== 'cut-and-finish'
+    return soccer.isPass(command)
       ? soccer.previewPass(match, command, plan).destination : soccer.commandTarget(match, command)
   },
   opponent: soccerAI,
@@ -352,8 +355,18 @@ function enterFixture() {
   const session = openClubFixture(active)
   if (active !== club) updateClub(active)
   changeScreen('fixture')
-  const saveTurn = (orders: readonly PlanCommand[], match: MatchSnapshot, formation?: football.Formation) =>
-    updateClub(saveClubTurn(club!, orders, match, formation))
+  const saveTurn = (orders: readonly PlanCommand[], match: MatchSnapshot, formation?: football.Formation) => {
+    const previous = club!
+    const next = saveClubTurn(previous, orders, match, formation)
+    updateClub(next)
+    if (next.pending) return []
+    return next.roster.flatMap((athlete, index) => {
+      const role = athlete.specialty
+      const rank = specialtyRank(athlete.mastery[role])
+      return rank === specialtyRank(previous.roster[index].mastery[role])
+        ? [] : [`${profile(athlete.id).name} · ${role} · ${rank}`]
+    })
+  }
   if (session.sport === 'basketball') mountGame(basketballDefense(session.defense), route.signal, { ...session, saveTurn })
   else if (session.sport === 'soccer') mountGame(soccerView, route.signal, { ...session, saveTurn })
   else if (session.sport === 'hockey') mountHockey(route.signal, { ...session, saveTurn })
@@ -369,7 +382,8 @@ function showClub() {
     update: updateClub,
     start: enterFixture,
     recruit: id => updateClub(recruit(club!, id)),
-    train: (id, sport) => updateClub(train(club!, id, sport)),
+    train: (id, focus) => updateClub(train(club!, id, focus)),
+    trainTechnical: (id, sport, skill) => updateClub(trainTechnical(club!, id, sport, skill)),
     equip: (id, sport, technique) => updateClub(equip(club!, id, sport, technique)),
     learnSignature: (id, sport, signature) => updateClub(learnSignature(club!, id, sport, signature)),
     equipSignature: (id, sport, signature) => updateClub(equipSignature(club!, id, sport, signature)),
