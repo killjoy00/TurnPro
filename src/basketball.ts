@@ -1,3 +1,4 @@
+import { contactBonus, fatiguePenalty, movementMultiplier, recoveryBonus } from './athletics.ts'
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
 
 import {
@@ -173,9 +174,10 @@ export function shotEstimate(match: Match, athlete: Athlete, screened: ReadonlyS
   const defenders = defendersNear(match, athlete, 7)
   const pressure = defenders.reduce((total, defender) => {
     if (screened.has(defender.id)) return total
-    return total + (distance(defender.position, athlete.position) <= 3.5 ? 17 : 8) + (defender.defense ?? 0) + (defender.technique === 'read-play' ? 4 : 0)
+    return total + (distance(defender.position, athlete.position) <= 3.5 ? 17 : 8) + (defender.defense ?? 0)
+      + (defender.technique === 'read-play' ? 4 : 0) + contactBonus(defender) * 2
   }, 0)
-  const fatigue = Math.max(0, 65 - athlete.stamina) * 0.35
+  const fatigue = fatiguePenalty(athlete, 65, 0.35)
   const cleanLook = athlete.technique === 'clean-look' && pressure === 0 ? 8 : 0
   const chance = clamp(87 - range * 1.55 + (athlete.shooting - 6) * 4 - pressure - fatigue + cleanLook, 7, 94)
   return { points, chance: Math.round(chance), pressure, range }
@@ -198,8 +200,8 @@ function moveAthlete(athlete: Athlete, target: Point, reach: number, athletes: r
   return distance(start, athlete.position)
 }
 
-function reach(athlete: Athlete): number {
-  return (5 + athlete.speed * 0.65) * (0.65 + athlete.stamina * 0.0035)
+function reach(athlete: Athlete, ordered = false): number {
+  return (5 + athlete.speed * 0.65) * (0.65 + athlete.stamina * 0.0035) * movementMultiplier(athlete, ordered)
 }
 
 function matchedAthlete(match: Match, defender: Athlete): Athlete {
@@ -216,7 +218,7 @@ function driveTarget(match: Match, athlete: Athlete): Point {
     { x: clamp(sidestep.x - 8, 2, COURT.width - 2), y: sidestep.y },
   ]
   return candidates.map(point => {
-    const end = stepToward(start, point, reach(athlete))
+    const end = stepToward(start, point, reach(athlete, true))
     const obstruction = match.athletes.some(other => other.id !== athlete.id
       && distanceToSegment(other.position, start, end) < 2.3)
     const progress = distance(start, COURT.hoop) - distance(end, COURT.hoop)
@@ -256,6 +258,19 @@ function drives(command: Command | undefined): boolean {
   return command?.kind === 'drive' || command?.kind === 'finish' || command?.kind === 'kickout'
 }
 
+export function baseAssignment(match: Match, id: string) {
+  const player = athleteById(match, id)
+  const holder = athleteById(match, match.holder)
+  if (player.id === holder.id) return { label: 'Hold the ball' }
+  const destination = assignment(match, player, undefined)
+  const projected = { ...player }
+  moveAthlete(projected, destination, reach(player) * 0.65, match.athletes)
+  return {
+    label: player.team === holder.team ? 'Keep floor spacing' : `Mark ${matchedAthlete(match, player).name}`,
+    target: projected.position,
+  }
+}
+
 export function resolveTurn(match: Match, plans: Plans<Command>) {
   if (match.rulesVersion !== RULES_VERSION) throw new Error('Unsupported rules version.')
   if (finished(match)) throw new Error('This match is over.')
@@ -284,7 +299,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       continue
     }
     const target = stepToward(defender.position, screener.position, 2.3)
-    moveAthlete(screener, target, reach(screener) * 0.8, next.athletes)
+    moveAthlete(screener, target, reach(screener, true) * 0.8, next.athletes)
     if (distance(screener.position, defender.position) <= 4) {
       screened.add(defender.id)
       emit('movement', `${screener.name} screens ${defender.name}, holding the defender in place and taking away their contest.`)
@@ -316,7 +331,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   for (const athlete of ordered) {
     const command = commands.get(athlete.id)
     const adjustment = screened.has(athlete.id) ? 0 : switches.has(athlete.id) ? 0.7 : command ? 1 : 0.65
-    const traveled = moveAthlete(athlete, destinations.get(athlete.id)!, reach(athlete) * adjustment, next.athletes)
+    const traveled = moveAthlete(athlete, destinations.get(athlete.id)!, reach(athlete, Boolean(command)) * adjustment, next.athletes)
     if (command?.kind === 'cut' || drives(command)) {
       emit('movement', traveled >= 2
         ? `${athlete.name} ${command?.kind === 'cut' ? 'cuts' : 'drives'} ${Math.round(traveled)} ft.`
@@ -340,7 +355,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     const chance = clamp(100 - range * 0.65 + (holder.passing - 6) * 3
       - lane.reduce((cost, defender) => cost + 17 + (defender.defense ?? 0) + (defender.technique === 'read-play' ? 4 : 0), 0)
       + ((holder.awareness ?? 6) - 6) * 1.5
-      + (lane.length > 0 && holder.technique === 'thread-pass' ? 12 : 0) - Math.max(0, 60 - holder.stamina) * 0.3, 15, 98)
+      + (lane.length > 0 && holder.technique === 'thread-pass' ? 12 : 0) - fatiguePenalty(holder, 60, 0.3), 15, 98)
     const passDetail = `${Math.round(chance)}% completion, ${lane.length} ${lane.length === 1 ? 'defender' : 'defenders'} in the lane`
     if (random.next() * 100 < chance) {
       next.holder = receiver.id
@@ -375,7 +390,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       .map((athlete, index) => ({ athlete, distance: distances[index] }))
       .filter(candidate => candidate.distance <= nearest + 9)
       .map(({ athlete, distance: range }) => ({ athlete, weight: (nearest + 10 - range)
-        * (0.65 + athlete.stamina * 0.0035) * (0.6 + athlete.strength * 0.06) }))
+        * (0.65 + athlete.stamina * 0.0035) * (0.6 + (athlete.strength + contactBonus(athlete)) * 0.06) }))
     let selection = random.next() * candidates.reduce((sum, candidate) => sum + candidate.weight, 0)
     for (const { athlete, weight } of candidates) {
       selection -= weight
@@ -392,7 +407,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   }
 
   const pressure = driving ? defendersNear(next, holder, 4).filter(athlete => !screened.has(athlete.id)) : []
-  const stripChance = clamp(8 + pressure.length * 10 + (100 - holder.stamina) * 0.15, 8, 55)
+  const strength = pressure.reduce((total, defender) => total + contactBonus(defender), 0) - contactBonus(holder)
+  const stripChance = clamp(8 + pressure.length * 10 + fatiguePenalty(holder, 100, 0.15) + strength * 2, 8, 55)
   const stopped = pressure.length > 0 && random.next() * 100 < stripChance
   if (stopped) {
     changePossession(`${pressure[0].name} strips ${holder.name} on the drive (${Math.round(stripChance)}% turnover risk).`, 'turnover')
@@ -411,7 +427,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
 
   for (const athlete of next.athletes) {
     const command = commands.get(athlete.id)
-    athlete.stamina = clamp(athlete.stamina + (command ? -ACTIONS[command.kind].stamina : athlete.technique === 'second-wind' ? 10 : 6), 0, 100)
+    const recovery = (athlete.technique === 'second-wind' ? 10 : 6) + recoveryBonus(athlete)
+    athlete.stamina = clamp(athlete.stamina + (command ? -ACTIONS[command.kind].stamina : recovery), 0, 100)
   }
   next.randomState = random.state
   next.turn += 1

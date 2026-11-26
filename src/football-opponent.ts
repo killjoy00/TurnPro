@@ -5,6 +5,15 @@ import { finished, legalCommands, playEstimate, PREVIOUS_RULES_VERSION, TURN_LIM
 export const FOOTBALL_STYLES = { balanced: 'Situational defense', pressure: 'Blitz-heavy', shell: 'Deep coverage' } as const
 export type FootballStyle = keyof typeof FOOTBALL_STYLES
 
+function defensiveCalls(match: Match, style: FootballStyle, needed: number): Command['kind'][] {
+  if (match.down === 4 && match.yard >= 58 && needed >= 4) return ['rush-kick', 'fill', 'cover-short']
+  if (match.formation === 'power') return ['fill', 'fill', style === 'pressure' ? 'blitz' : 'cover-short']
+  if (match.formation === 'spread') return [style === 'pressure' ? 'blitz' : 'cover-deep', 'cover-deep', 'cover-short']
+  if (style === 'pressure') return ['blitz', 'blitz', 'cover-short']
+  if (style === 'shell') return ['cover-deep', 'cover-deep', 'fill']
+  return needed >= 8 ? ['blitz', 'cover-deep', 'cover-short'] : ['fill', 'fill', 'cover-short']
+}
+
 export function planTurn(match: Match, team: Team, style: FootballStyle = 'balanced'): Command[] {
   if (finished(match)) return []
   const squad = match.athletes.filter(player => player.team === team).sort((a, b) => b.stamina - a.stamina)
@@ -12,13 +21,8 @@ export function planTurn(match: Match, team: Team, style: FootballStyle = 'balan
   const needed = match.sticks - match.yard
 
   if (match.offense !== team) {
-    const kinds = match.down === 4 && match.yard >= 58 && needed >= 4
-      ? ['rush-kick', 'fill', 'cover-short']
-      : style === 'pressure' ? ['blitz', 'blitz', 'cover-short']
-        : style === 'shell' ? ['cover-deep', 'cover-deep', 'fill']
-          : needed >= 8 ? ['blitz', 'cover-deep', 'cover-short'] : ['fill', 'fill', 'cover-short']
     const plan: Command[] = []
-    for (const kind of kinds) {
+    for (const kind of defensiveCalls(match, style, needed)) {
       const option = options.find(order => order.kind === kind && !plan.some(previous => previous.athlete === order.athlete))
       if (option) plan.push(option)
     }

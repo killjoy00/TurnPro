@@ -1,11 +1,12 @@
 import {
   findAthlete, teamNames,
-  type AthleteSnapshot, type MatchSnapshot, type PlanCommand, type Plans, type Team, type TurnEvent,
+  type AthleteSnapshot, type BaseAssignment, type MatchSnapshot, type PlanCommand, type Plans, type Team, type TurnEvent,
 } from './match.ts'
 import type { Point } from './math.ts'
 import { TECHNIQUES } from './club.ts'
 import type { LoggedTurn } from './club-fixture.ts'
 import { trackMatch } from './playtest.ts'
+import type { Formation } from './football.ts'
 
 declare const TURN_PRO_FULL_PROTOTYPE: boolean
 
@@ -29,9 +30,15 @@ export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
   opponent(match: S, team: Team): C[]
   resolveTurn(match: S, plans: Plans<C>): { match: S; events: TurnEvent[] }
   draw(context: CanvasRenderingContext2D, match: S): void
+  baseAssignment(match: S, athlete: string): BaseAssignment
   clockDetail(match: S, portrait: boolean): string
   opponentDetail(match: S): string
   lineupDetail?(match: S, portrait: boolean): string
+  formation?: {
+    options: Record<Formation, { name: string; detail: string }>
+    current(match: S): Formation | undefined
+    set(match: S, formation: Formation): S
+  }
 }
 
 function element<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -63,7 +70,7 @@ interface PracticeStep {
 export interface SeasonMatch<S extends MatchSnapshot, C extends PlanCommand> {
   match: S
   history: LoggedTurn[]
-  saveTurn(orders: readonly C[], match: S): void
+  saveTurn(orders: readonly C[], match: S, formation?: Formation): void
 }
 
 export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
@@ -72,6 +79,18 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   const budgetPreset = element('budget-preset')
   const practice = element('practice-tools')
   const checklist = element('practice-checklist')
+  const formationPanel = element('formation-panel')
+  const formationSelect = element<HTMLSelectElement>('formation-select')
+  const formationDetail = element('formation-detail')
+  const assignmentToggle = element<HTMLButtonElement>('assignment-toggle')
+  let showAssignments = false
+  assignmentToggle.setAttribute('aria-pressed', 'false')
+  assignmentToggle.addEventListener('click', () => {
+    showAssignments = !showAssignments
+    assignmentToggle.setAttribute('aria-pressed', String(showAssignments))
+    renderBoard()
+    renderPlan()
+  }, { signal })
   let steps: readonly PracticeStep[] = []
   let coached = false
   const stepReady = ({ athlete, kind, target }: PracticeStep) =>
@@ -88,6 +107,16 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   const restartButton = element<HTMLButtonElement>('restart')
   const turnName = sport.turnName ?? 'Turn'
   restartButton.hidden = Boolean(season)
+  formationPanel.hidden = !sport.formation
+  if (sport.formation) {
+    formationSelect.replaceChildren(...Object.entries(sport.formation.options).map(([id, option]) => new Option(option.name, id)))
+    formationSelect.addEventListener('change', () => {
+      const picker = sport.formation!
+      if (!picker.current(match) || match.turn > sport.turnLimit || steps.length) return
+      match = picker.set(match, formationSelect.value as Formation)
+      render()
+    }, { signal })
+  }
   commit.innerHTML = `Commit ${turnName.toLowerCase()} <span aria-hidden="true">→</span>`
 
   function selectPlayer(): string {
@@ -110,6 +139,21 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     context.strokeStyle = sport.id === 'soccer' || sport.id === 'football' ? '#e3fc9b'
       : sport.id === 'hockey' ? '#204e6a' : '#194f43'
     context.lineWidth = sport.id === 'basketball' ? 0.28 : 0.5
+    if (showAssignments && match.turn <= sport.turnLimit) {
+      context.save()
+      context.globalAlpha = 0.55
+      context.setLineDash([0.35, 0.75])
+      for (const athlete of match.athletes) {
+        if (athlete.team !== 0 || plan.some(order => order.athlete === athlete.id)) continue
+        const target = sport.baseAssignment(match, athlete.id).target
+        if (!target) continue
+        context.beginPath()
+        context.moveTo(athlete.position.x, athlete.position.y)
+        context.lineTo(target.x, target.y)
+        context.stroke()
+      }
+      context.restore()
+    }
     context.setLineDash([0.8, 0.55])
     for (const command of plan) {
       const from = findAthlete(match.athletes, command.athlete).position
@@ -146,7 +190,9 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     markers.innerHTML = match.athletes.map(athlete => {
       const ownsBall = athlete.id === holder.id && !(match.turn > sport.turnLimit)
       const queued = plan.some(command => command.athlete === athlete.id)
-      const description = `${teams[athlete.team]} ${athlete.name}, number ${athlete.number}${ownsBall ? `, has the ${object}` : ''}${queued ? ', command queued' : ''}`
+      const base = showAssignments && athlete.team === 0 && !queued && match.turn <= sport.turnLimit
+        ? `, ${sport.baseAssignment(match, athlete.id).label}` : ''
+      const description = `${teams[athlete.team]} ${athlete.name}, number ${athlete.number}${ownsBall ? `, has the ${object}` : ''}${queued ? ', command queued' : ''}${base}`
       const position = project(athlete.position)
       return `<button type="button" class="marker ${athlete.team ? 'away' : 'home'} ${queued ? 'queued' : ''}"
         style="left:${position.x * 100}%;top:${position.y * 100}%"
@@ -173,6 +219,14 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   }
 
   function renderPlan() {
+    if (sport.formation) {
+      const activeFormation = sport.formation.current(match)
+      formationPanel.hidden = !activeFormation || match.turn > sport.turnLimit || Boolean(steps.length)
+      if (activeFormation) {
+        formationSelect.value = activeFormation
+        formationDetail.textContent = sport.formation.options[activeFormation].detail
+      }
+    }
     budget.textContent = `${plan.length} / ${sport.limit(match)} commands`
     orders.innerHTML = plan.length ? `<ul>${plan.map(command => {
       const athlete = findAthlete(match.athletes, command.athlete)
@@ -182,6 +236,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     }).join('')}</ul>` : ''
 
     if ((match.turn > sport.turnLimit)) {
+      assignmentToggle.disabled = true
       actions.innerHTML = season
         ? '<p class="instructions">Fixture recorded. Return to the club to see the result and prepare for the next match.</p>'
         : '<p class="instructions">Review the play-by-play or start a new match.</p>'
@@ -191,6 +246,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     }
 
     const athlete = findAthlete(match.athletes, selected)
+    assignmentToggle.disabled = false
     const commands = availableCommands()
     const active = plan.find(command => command.athlete === athlete.id)
     const endOfBudget = plan.length >= sport.limit(match) && !active
@@ -203,6 +259,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     actions.innerHTML = `<div class="athlete-header">
       <b>${athlete.name}</b><small>${athlete.role}</small><span class="stamina-value">STA ${athlete.stamina}</span>
       </div><p class="instructions">${instruction}</p>
+      ${showAssignments && athlete.team === 0 && !active ? `<p class="base-assignment">${sport.baseAssignment(match, athlete.id).label}</p>` : ''}
       ${athlete.technique ? `<p class="practice-ability">${TECHNIQUES[athlete.technique].label} · ${TECHNIQUES[athlete.technique].detail}</p>` : ''}
       <ul class="options" ${commands.length ? '' : 'hidden'}>${commands.map((command, index) => {
         const label = sport.label(match, command)
@@ -284,7 +341,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     const turn = match.turn
     const opponent = sport.opponent(match, 1)
     const resolution = sport.resolveTurn(match, [plan, opponent])
-    season?.saveTurn(plan, resolution.match)
+    season?.saveTurn(plan, resolution.match, sport.formation?.current(match))
     match = resolution.match
     track?.(turn, match.score, Boolean(steps.length) || match.turn > sport.turnLimit)
     if (steps.length) {

@@ -11,11 +11,13 @@ The four-sport prototype contains basketball, soccer, ice hockey, and American f
 
 Download `turn-pro-playtest` from a successful build and open `turn-pro.html` in a browser. The separate `turn-pro-launch-browser` artifact is the basketball-and-soccer Steam packaging preview.
 
-- **Club season** offers a 12-fixture four-sport league, a six-fixture basketball-and-soccer league, and shorter single-sport seasons. Sign one prospect, set lineups for each sport, and spend one weekly session on sport XP, transferable awareness, or fatigue recovery. Qualify for a final with one leg per sport in your season. Your roster, abilities, titles, and rival records carry forward. Saves keep the last committed turn and can be exported.
+- **Club season** offers a 12-fixture four-sport league, a six-fixture basketball-and-soccer league, and shorter single-sport seasons. Sign one prospect, set lineups, and spend one weekly session on sport XP, a shared attribute, or fatigue recovery. Athletes gain proficiency in roles they play. Train speed to unlock **Quick step** or strength to unlock **Anchor** in a sport after earning 3 XP there. Your roster, abilities, titles, and rival records carry forward. Saves keep the last committed turn and can be exported.
 - **Basketball** plays 5-on-5 over 12 turns. Give Reed **Drive and kick out to Vale**, Okafor **Set screen**, and Vale **Catch and shoot** on the same turn.
 - **Soccer** plays 11-on-11 over two nine-turn halves. Try **Beat the press** or **Practice a cross**. Read the pass preview after queuing a run.
 - **Ice hockey** plays 6-on-6 over three six-turn periods. Start with **Practice a screened one-timer**. To change lines, select the goalie when the opponent has the puck.
-- **American football** plays 11-on-11 over 24 snaps. Try **Practice third and five**. Call a play with the quarterback and support it with two assignments. On fourth down, try for the first down, punt, or kick a field goal in range.
+- **American football** plays 11-on-11 over 24 snaps. Try **Practice third and five**. On offense, pick Balanced, Power, or Spread before calling the play and its supporting orders. Rivals adjust their defense to the visible formation. On fourth down, try for the first down, punt, or kick a field goal in range.
+
+Select **Base assignments** during a match to inspect the jobs of teammates without a queued order and see projected movement on the court, pitch, or rink.
 
 ## Desktop playtest
 

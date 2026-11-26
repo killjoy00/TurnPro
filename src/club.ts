@@ -1,6 +1,8 @@
 import { clamp } from './math.ts'
 import type { Appearance, AthleteBuild, PlanCommand, Technique } from './match.ts'
 import { PREVIOUS_RULES_VERSION as ORIGINAL_SOCCER_RULES } from './soccer.ts'
+import { isFormation, type Formation } from './football.ts'
+import { ATHLETIC_TRAITS, isAthleticTrait, MAX_TRAIT, UNTRAINED, type Athletics, type AthleticTrait } from './athletics.ts'
 import {
   schedule, seasonSchedule, seasonSports, simulateRivals, SPORTS, TURN_LIMITS,
   type Fixture, type LeagueProgress, type Score, type SeasonMode, type SeasonRecord, type Sport,
@@ -15,11 +17,13 @@ export const SPECIALTIES: Record<Specialty, string> = {
   Finisher: '+2 finishing, −1 passing',
 }
 
-export const TECHNIQUES: Record<Technique, { label: string; detail: string; specialty?: Specialty }> = {
+export const TECHNIQUES: Record<Technique, { label: string; detail: string; specialty?: Specialty; trait?: AthleticTrait }> = {
   'thread-pass': { label: 'Thread the pass', detail: 'Improves guarded passes.', specialty: 'Playmaker' },
   'read-play': { label: 'Read the play', detail: 'Improves contests, interceptions and saves.', specialty: 'Defender' },
   'clean-look': { label: 'Clean look', detail: 'Improves uncontested shots.', specialty: 'Finisher' },
   'second-wind': { label: 'Second wind', detail: 'Recovers more stamina on turns without an order.' },
+  'quick-step': { label: 'Quick step', detail: 'Extends ordered movement and routes at 50 stamina or higher.', trait: 'speed' },
+  anchor: { label: 'Anchor', detail: 'Improves contact on rebounds, tackles, forechecks, and runs.', trait: 'strength' },
 }
 
 interface Profile {
@@ -72,6 +76,31 @@ const DEFAULT_LINEUPS: Record<Sport, string[]> = {
 const INITIAL_XP: Record<Sport, number> = { basketball: 0, soccer: 0, hockey: 0, football: 0 }
 const INITIAL_TECHNIQUES: Record<Sport, Technique | null> = { basketball: null, soccer: null, hockey: null, football: null }
 export const MAX_FILM_BONUS = 2
+export type TrainingFocus = Sport | AthleticTrait | 'film' | 'recovery'
+const ROLE_THRESHOLD = 3
+const MAX_ROLE_STARTS = ROLE_THRESHOLD * 2
+type RoleRating = 'keeping' | 'passing' | 'defense' | 'finishing'
+const ROLE_RATINGS: Record<Sport, Partial<Record<string, RoleRating>>> = {
+  basketball: { PG: 'passing', PF: 'defense', C: 'defense' },
+  soccer: { GK: 'keeping', LB: 'defense', CB: 'defense', RB: 'defense', DM: 'passing', CM: 'passing', AM: 'passing' },
+  hockey: { GK: 'keeping', C: 'passing', LD: 'defense', RD: 'defense' },
+  football: { 'QB / S': 'passing', 'LT / DE': 'defense', 'LG / DT': 'defense', 'C / LB': 'defense',
+    'RG / DT': 'defense', 'RT / DE': 'defense' },
+}
+
+function emptyRoleStarts(): Record<Sport, Record<string, number>> {
+  return { basketball: {}, soccer: {}, hockey: {}, football: {} }
+}
+
+export function roleName(sport: Sport, slot: number): string {
+  return ROLES[sport][slot].replace(/^Reserve /, '')
+}
+
+export function roleProgress(sport: Sport, role: string, starts: number) {
+  const rating = ROLE_RATINGS[sport][role] ?? 'finishing'
+  const level = Math.min(2, Math.floor(starts / ROLE_THRESHOLD))
+  return { rating, level, maxStarts: MAX_ROLE_STARTS, nextAt: level < 2 ? (level + 1) * ROLE_THRESHOLD : null }
+}
 
 export function keeperSlot(sport: Sport): number {
   return sport === 'soccer' ? 0 : sport === 'hockey' ? 10 : -1
@@ -83,18 +112,20 @@ export interface ClubAthlete {
   xp: Record<Sport, number>
   fatigue: number
   film: number
+  athletics: Athletics
+  roleStarts: Record<Sport, Record<string, number>>
   equipped: Record<Sport, Technique | null>
 }
 
 export interface Club extends SeasonRecord {
-  version: 4
+  version: 5
   season: number
   history: SeasonRecord[]
   recruitedSeason: number
   roster: ClubAthlete[]
   lineups: Record<Sport, string[]>
   trainedWeek: number
-  pending: { rules: number; turns: PlanCommand[][] } | null
+  pending: { rules: number; turns: PlanCommand[][]; formations?: (Formation | null)[] } | null
 }
 
 export function profile(id: string): Profile {
@@ -104,12 +135,13 @@ export function profile(id: string): Profile {
 }
 
 function makeAthlete(entry: Profile): ClubAthlete {
-  return { id: entry.id, specialty: entry.specialty, xp: { ...INITIAL_XP }, fatigue: 0, film: 0, equipped: { ...INITIAL_TECHNIQUES } }
+  return { id: entry.id, specialty: entry.specialty, xp: { ...INITIAL_XP }, fatigue: 0, film: 0, equipped: { ...INITIAL_TECHNIQUES },
+    athletics: { ...UNTRAINED }, roleStarts: emptyRoleStarts() }
 }
 
 export function createClub(mode: SeasonMode): Club {
   return {
-    version: 4, season: 1, history: [], recruitedSeason: 0, mode, league: { seedOffset: 0, otherResults: [] }, roster: profiles.map(makeAthlete),
+    version: 5, season: 1, history: [], recruitedSeason: 0, mode, league: { seedOffset: 0, otherResults: [] }, roster: profiles.map(makeAthlete),
     lineups: structuredClone(DEFAULT_LINEUPS),
     trainedWeek: 0, results: [], pending: null,
   }
@@ -152,7 +184,7 @@ export function recruit(club: Club, id: string): Club {
   return { ...club, recruitedSeason: club.season, roster: [...club.roster, makeAthlete(prospect)] }
 }
 
-export function train(club: Club, id: string, focus: Sport | 'film' | 'recovery'): Club {
+export function train(club: Club, id: string, focus: TrainingFocus): Club {
   const week = openWeek(club)
   if (club.trainedWeek === week) throw new Error('You have used this week’s training session.')
   const improved = { ...clubAthlete(club, id) }
@@ -162,6 +194,9 @@ export function train(club: Club, id: string, focus: Sport | 'film' | 'recovery'
   } else if (focus === 'recovery') {
     if (!improved.fatigue) throw new Error('This athlete is fully rested.')
     improved.fatigue = Math.max(0, improved.fatigue - 28)
+  } else if (isAthleticTrait(focus)) {
+    if (improved.athletics[focus] >= MAX_TRAIT) throw new Error('This attribute is fully trained.')
+    improved.athletics = { ...improved.athletics, [focus]: improved.athletics[focus] + 1 }
   } else {
     if (!seasonSports(club.mode).includes(focus)) throw new Error('Choose a sport in your season.')
     improved.xp = { ...improved.xp, [focus]: improved.xp[focus] + 3 }
@@ -195,7 +230,8 @@ export function setStarter(club: Club, sport: Sport, slot: number, id: string): 
 }
 
 export function unlockRequirement(technique: Technique): string {
-  const specialty = TECHNIQUES[technique].specialty
+  const { specialty, trait } = TECHNIQUES[technique]
+  if (trait) return `${ATHLETIC_TRAITS[trait].name} 1 · 3 XP in this sport`
   return specialty ? `${specialty} · 6 XP in this sport` : '5 total XP across sports'
 }
 
@@ -203,6 +239,7 @@ export function unlocked(player: ClubAthlete, sport: Sport, technique: Technique
   if (technique === null) return true
   const ability = TECHNIQUES[technique]
   if (!ability) return false
+  if (ability.trait) return player.athletics[ability.trait] >= 1 && player.xp[sport] >= 3
   return ability.specialty ? player.specialty === ability.specialty && player.xp[sport] >= 6
     : SPORTS.reduce((total, played) => total + player.xp[played], 0) >= 5
 }
@@ -224,19 +261,26 @@ export function baseSkill(entry: Profile, sport: Sport): number {
     : sport === 'football' ? (entry.basketball === 3 || entry.specialty === 'Defender' ? 3 : 2) : entry[sport]
 }
 
-export function ratings(player: ClubAthlete, sport: Sport): AthleteBuild {
+export function ratings(player: ClubAthlete, sport: Sport, slot?: number): AthleteBuild {
   const entry = profile(player.id)
   const trained = development(player, sport)
   const skill = baseSkill(entry, sport) + trained
   const pass = player.specialty === 'Playmaker' ? 2 : player.specialty === 'Finisher' ? -1 : 0
   const finish = player.specialty === 'Finisher' ? 2 : -1
-  return {
+  const result: AthleteBuild = {
     name: entry.name, stamina: 100 - player.fatigue, awareness: entry.awareness + player.film,
     passing: clamp(4 + skill + pass, 2, 12), finishing: clamp(4 + skill + finish, 2, 12),
     defense: (player.specialty === 'Defender' ? 2 : 0) + (sport === 'hockey' || sport === 'football' ? trained : 0),
     keeping: entry.keeper ? 6 + skill : 0,
     technique: player.equipped[sport] ?? undefined,
   }
+  if (Object.values(player.athletics).some(Boolean)) result.athletics = { ...player.athletics }
+  if (slot !== undefined) {
+    const role = roleName(sport, slot)
+    const { rating, level } = roleProgress(sport, role, player.roleStarts[sport][role] ?? 0)
+    result[rating] += level
+  }
+  return result
 }
 
 export function startFixture(club: Club, rules: number): Club {
@@ -258,9 +302,12 @@ export function settleFixture(club: Club, score: Score, players: readonly { team
     const appearance = played.find(({ slot }) => starters[slot] === player.id)
     if (!appearance) return { ...player, fatigue: Math.max(0, player.fatigue - 14) }
     const exertion = Math.max(0, 100 - player.fatigue - appearance.stamina)
+    const role = roleName(fixture.sport, appearance.slot)
+    const starts = player.roleStarts[fixture.sport]
     return {
       ...player, fatigue: clamp(player.fatigue + 23 + Math.round(exertion / 3), 0, 65),
       xp: { ...player.xp, [fixture.sport]: player.xp[fixture.sport] + (appearance.orders >= 3 ? 2 : 1) },
+      roleStarts: { ...player.roleStarts, [fixture.sport]: { ...starts, [role]: Math.min(MAX_ROLE_STARTS, (starts[role] ?? 0) + 1) } },
     }
   })
   const league = club.league && fixture.stage === 'regular'
@@ -322,7 +369,7 @@ function migrateLeague(data: Record<string, unknown>): Record<string, unknown> {
   return { ...previous, version: 3, league, history: previous.history.map(entry => ({ ...entry, league: null })) }
 }
 
-function migrateClub(data: Record<string, unknown>): unknown {
+function migrateFourSports(data: Record<string, unknown>): Record<string, unknown> {
   if (data.version === 4) return data
   if (data.mode !== 'both' && data.mode !== 'basketball' && data.mode !== 'soccer') return data
   const previous = migrateLeague(data)
@@ -336,14 +383,22 @@ function migrateClub(data: Record<string, unknown>): unknown {
   }
 }
 
+function migrateClub(data: Record<string, unknown>): unknown {
+  if (data.version === 5) return data
+  const previous = migrateFourSports(data)
+  if (previous.version !== 4 || !Array.isArray(previous.roster)) return previous
+  return { ...previous, version: 5, roster: previous.roster.map(player => record(player)
+    ? { ...player, athletics: { ...UNTRAINED }, roleStarts: emptyRoleStarts() } : player) }
+}
+
 export function readClub(raw: string): Club {
   if (raw.length > 128_000) throw new Error('This file is too large to be a club save.')
   const data: unknown = JSON.parse(raw)
-  if (!record(data) || ![1, 2, 3, 4].includes(data.version as number) || !isMode(data.mode)) {
+  if (!record(data) || ![1, 2, 3, 4, 5].includes(data.version as number) || !isMode(data.mode)) {
     throw new Error('This is an unsupported club save.')
   }
   const club = migrateClub(data) as Club
-  if (club.version !== 4 || !Array.isArray(club.history) || club.season !== club.history.length + 1
+  if (club.version !== 5 || !Array.isArray(club.history) || club.season !== club.history.length + 1
     || !integer(club.recruitedSeason, 0, club.season)
     || !club.history.every((entry, index) => seasonValid(entry, index + 1, true))) {
     throw new Error('The past seasons in this save are invalid.')
@@ -352,7 +407,12 @@ export function readClub(raw: string): Club {
     || club.roster.some(player => !record(player) || typeof player.id !== 'string'
       || typeof player.specialty !== 'string' || !Object.hasOwn(SPECIALTIES, player.specialty) || !integer(player.fatigue, 0, 65)
       || !integer(player.film, 0, MAX_FILM_BONUS) || !record(player.xp) || !record(player.equipped)
+      || !record(player.athletics) || !Object.keys(ATHLETIC_TRAITS).every(trait => integer(player.athletics[trait as AthleticTrait], 0, MAX_TRAIT))
+      || !record(player.roleStarts)
       || SPORTS.some(sport => {
+        const roles = player.roleStarts[sport]
+        if (!record(roles) || Object.entries(roles).some(([role, starts]) =>
+          !ROLES[sport].some((_, slot) => roleName(sport, slot) === role) || !integer(starts, 0, MAX_ROLE_STARTS))) return true
         if (!integer(player.xp[sport], 0, Number.MAX_SAFE_INTEGER)) return true
         const selected = player.equipped[sport]
         return selected !== null && (typeof selected !== 'string' || !Object.hasOwn(TECHNIQUES, selected)
@@ -376,6 +436,9 @@ export function readClub(raw: string): Club {
     const upcoming = nextFixture(club)
     if (!record(club.pending) || !upcoming || !Array.isArray(club.pending.turns)
       || club.pending.turns.length >= TURN_LIMITS[upcoming.sport]
+      || (club.pending.formations !== undefined && (upcoming.sport !== 'football' || !Array.isArray(club.pending.formations)
+        || club.pending.formations.length !== club.pending.turns.length
+        || club.pending.formations.some(formation => formation !== null && !isFormation(formation))))
       || club.pending.turns.some(turn => !Array.isArray(turn) || turn.length > 3
         || turn.some(order => !record(order) || typeof order.athlete !== 'string' || typeof order.kind !== 'string'
           || ('target' in order && typeof order.target !== 'string' && typeof order.target !== 'number')))) {

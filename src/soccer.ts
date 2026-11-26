@@ -1,3 +1,4 @@
+import { contactBonus, fatiguePenalty, movementMultiplier, recoveryBonus } from './athletics.ts'
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
 import {
   COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, teamNames, validatePlans,
@@ -231,16 +232,16 @@ function formationAssignment(match: Match, player: Footballer, holder: Footballe
   }
 }
 
-function moveRange(player: Footballer): number {
-  return (7 + player.pace * 0.65) * (0.65 + player.stamina * 0.0035)
+function moveRange(player: Footballer, ordered = false): number {
+  return (7 + player.pace * 0.65) * (0.65 + player.stamina * 0.0035) * movementMultiplier(player, ordered)
 }
 
 export function runDestination(match: Match, player: Footballer, lane: number): Point {
-  return stepToward(player.position, runTarget(match, player, lane), moveRange(player))
+  return stepToward(player.position, runTarget(match, player, lane), moveRange(player, true))
 }
 
 function movement(match: Match, player: Footballer, holder: Footballer, command?: Command): Point {
-  const speed = moveRange(player)
+  const speed = moveRange(player, Boolean(command))
   let target: Point
   let travel: number
   switch (command?.kind) {
@@ -264,6 +265,16 @@ function movement(match: Match, player: Footballer, holder: Footballer, command?
   }, travel)
 }
 
+export function baseAssignment(match: Match, id: string) {
+  const player = athleteById(match, id)
+  const holder = athleteById(match, match.holder)
+  return {
+    label: player.id === holder.id ? 'Shield the ball' : player.slot === 0 ? 'Track the ball in goal'
+      : player.team === holder.team ? 'Support possession' : 'Hold defensive shape',
+    target: movement(match, player, holder),
+  }
+}
+
 export function shotEstimate(match: Match, player: Footballer) {
   const goal = attackGoal(match, player.team)
   const range = distance(player.position, goal)
@@ -272,7 +283,7 @@ export function shotEstimate(match: Match, player: Footballer) {
   const keeper = athleteById(match, `${otherTeam(player.team)}-0`)
   const cleanLook = player.technique === 'clean-look' && pressure === 0 ? 8 : 0
   const onTarget = clamp(91 + cleanLook - 1.18 * range - 0.54 * wide + (player.finishing - 6) * 4
-    - pressure * 8 - Math.max(0, 65 - player.stamina) * 0.35, 10, 95)
+    - pressure * 8 - fatiguePenalty(player, 65, 0.35), 10, 95)
   const save = clamp(31 + range * 0.65 + wide * 0.5 + (keeper.keeping - 6) * 4
     - Math.abs(keeper.position.y - MIDFIELD.y) * 2 + (keeper.technique === 'read-play' ? 5 : 0), 19, 86)
   return { range, pressure, onTarget, save, goal: Math.round(onTarget * (100 - save) / 100) }
@@ -293,7 +304,7 @@ export function passEstimate(match: Match, from: Footballer, target: Point, kind
   const chance = clamp(base - range * 0.55 - defenders.reduce((cost, defender) => cost + 13 + (defender.defense ?? 0) + (defender.technique === 'read-play' ? 3 : 0), 0)
     + (from.passing - 7) * 3 + ((from.awareness ?? 6) - 6) * 1.5
     + (defenders.length > 0 && from.technique === 'thread-pass' ? 12 : 0)
-    - Math.max(0, 65 - from.stamina) * 0.35, 14, 98)
+    - fatiguePenalty(from, 65, 0.35), 14, 98)
   return { chance, defenders, range }
 }
 
@@ -394,7 +405,9 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   } else {
     const challenger = nearBall(next, holder, 3.4).find(player => commands.get(player.id)?.kind === 'press')
     if (challenger) {
-      const chance = clamp(32 + (challenger.pace - holder.pace) * 4 + (100 - holder.stamina) * 0.22 + (challenger.defense ?? 0) * 3, 15, 75)
+      const contact = contactBonus(challenger) - contactBonus(holder)
+      const chance = clamp(32 + (challenger.pace - holder.pace) * 4 + fatiguePenalty(holder, 100, 0.22)
+        + (challenger.defense ?? 0) * 3 + contact * 4, 15, 75)
       if (roll() < chance) {
         next.holder = challenger.id
         emit('turnover', `${challenger.name} wins the ball from ${holder.name} (${Math.round(chance)}% tackle chance).`)
@@ -408,7 +421,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
 
   for (const player of next.athletes) {
     const command = commands.get(player.id)
-    player.stamina = clamp(player.stamina + (command ? -ACTIONS[command.kind].stamina : player.technique === 'second-wind' ? 9 : 5), 0, 100)
+    const recovery = (player.technique === 'second-wind' ? 9 : 5) + recoveryBonus(player)
+    player.stamina = clamp(player.stamina + (command ? -ACTIONS[command.kind].stamina : recovery), 0, 100)
   }
   next.randomState = random.state
   next.turn += 1

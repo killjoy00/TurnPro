@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createMatch, createThirdDownPractice, direction, downLabel, fieldLines,
-  finished, legalCommands, playEstimate, resolveTurn, PREVIOUS_RULES_VERSION, TURN_LIMIT,
+  finished, legalCommands, playEstimate, resolveTurn, setFormation, PREVIOUS_RULES_VERSION, TURN_LIMIT,
 } from '../src/football.ts'
 import { planTurn } from '../src/football-opponent.ts'
 
@@ -71,6 +71,22 @@ test('fourth down supports turnovers on downs, punts, and field goals in range',
   assert.deepEqual(made.match.score, [3, 0])
   assert.equal(made.match.yard, 25)
   assert.equal(made.match.offense, 1)
+})
+
+test('offensive formations change alignment, trade run support for passing, and draw different coverage', () => {
+  const game = createMatch(27)
+  const power = setFormation(game, 'power')
+  const spread = setFormation(game, 'spread')
+  assert.notEqual(power.athletes.find(player => player.id === '0-o-7').position.y,
+    spread.athletes.find(player => player.id === '0-o-7').position.y)
+  const inside = play('inside')
+  const pass = play('quick-pass', '0-o-7')
+  assert.ok(playEstimate(power, inside, []).yards > playEstimate(spread, inside, []).yards)
+  assert.ok(playEstimate(spread, pass, []).chance > playEstimate(power, pass, []).chance)
+  assert.equal(planTurn(power, 1).filter(order => order.kind === 'fill').length, 2)
+  assert.ok(planTurn(spread, 1).some(order => order.kind === 'cover-deep'))
+  assert.equal(game.formation, undefined)
+  assert.deepEqual(setFormation(spread, 'balanced'), game)
 })
 
 test('a late fourth down uses a field goal if three points can tie or take the lead', () => {

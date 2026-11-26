@@ -1,8 +1,9 @@
 import {
   availableProspects, baseSkill, clubAthlete, createClub, development, keeperSlot, MAX_FILM_BONUS, nextFixture, nextSeason, profile, ratings, ROLES,
-  SPECIALTIES, TECHNIQUES, unlocked, unlockRequirement,
-  type Club, type SeasonMode, type Specialty, type Sport,
+  roleName, roleProgress, SPECIALTIES, TECHNIQUES, unlocked, unlockRequirement,
+  type Club, type SeasonMode, type Specialty, type Sport, type TrainingFocus,
 } from './club.ts'
+import { ATHLETIC_TRAITS, isAthleticTrait, MAX_TRAIT, type AthleticTrait } from './athletics.ts'
 import { DEFENSE_NAMES } from './opponent.ts'
 import { SHAPE_NAMES } from './soccer.ts'
 import { HOCKEY_STYLES } from './hockey-opponent.ts'
@@ -15,7 +16,7 @@ export interface ClubView {
   update(club: Club): void
   start(): void
   recruit(id: string): void
-  train(id: string, focus: Sport | 'film' | 'recovery'): void
+  train(id: string, focus: TrainingFocus): void
   specialize(id: string, choice: Specialty): void
   equip(id: string, sport: Sport, technique: Technique | null): void
   changeStarter(sport: Sport, slot: number, id: string): void
@@ -24,6 +25,7 @@ export interface ClubView {
 }
 
 const SPORT: Record<Sport, string> = { basketball: 'Basketball', soccer: 'Soccer', hockey: 'Ice hockey', football: 'American football' }
+const TRAITS = Object.keys(ATHLETIC_TRAITS) as AthleticTrait[]
 const seasonOutcomeByIndex = (record: SeasonRecord, index: number) => seasonOutcome(record, index + 1)
 
 export function mountClub(container: HTMLElement, controller: ClubView, signal: AbortSignal, fullPrototype: boolean) {
@@ -93,7 +95,9 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       }).map(entry => {
         const data = profile(entry.id)
         const skill = baseSkill(data, lineupSport) + development(entry, lineupSport)
-        return `<option value="${entry.id}" ${entry.id === id ? 'selected' : ''}>${data.name} · Skill ${skill} · ${entry.fatigue}% fatigue</option>`
+        const role = roleName(lineupSport, slot)
+        const fit = roleProgress(lineupSport, role, entry.roleStarts[lineupSport][role] ?? 0)
+        return `<option value="${entry.id}" ${entry.id === id ? 'selected' : ''}>${data.name} · Skill ${skill}${fit.level ? ` · +${fit.level} ${fit.rating}` : ''} · ${entry.fatigue}% fatigue</option>`
       }).join('')
       return `<label class="lineup-choice"><span>${label}</span><select data-slot="${slot}" aria-label="${label} starter, slot ${slot + 1}" ${editable ? '' : 'disabled'}>${choices}</select></label>`
     }).join('')
@@ -105,8 +109,15 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         return `<option value="${key}" ${player.equipped[sport] === key ? 'selected' : ''} ${available ? '' : 'disabled'}>
           ${TECHNIQUES[key].label}${available ? '' : ` · ${unlockRequirement(key)}`}</option>`
       }).join('')
+      const roles = Object.entries(player.roleStarts[sport]).map(([role, starts]) => {
+        const progress = roleProgress(sport, role, starts)
+        const boost = progress.level ? ` · +${progress.level} ${progress.rating}` : ''
+        const next = progress.nextAt ? ` · Next +1 ${progress.rating} at ${progress.nextAt}` : ''
+        return `<small>${role} · ${starts}/${progress.maxStarts} appearances${boost}${next}</small>`
+      }).join('')
       return `<li><b>${SPORT[sport]}</b> · ${player.xp[sport]} XP · +${development(player, sport)} skill
         <small>Passing ${stat.passing} · Finishing ${stat.finishing} · Defensive bonus ${stat.defense}${keeperSlot(sport) >= 0 && stat.keeping ? ` · Keeping ${stat.keeping}` : ''}</small>
+        ${roles}
         <label class="lineup-choice">Ability <select data-ability="${sport}" aria-label="${SPORT[sport]} ability for ${info.name}" ${editable ? '' : 'disabled'}>
           <option value="">No ability equipped</option>${options}
         </select></label>
@@ -180,13 +191,16 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       <section class="club-panel"><h3>Roster</h3><div class="roster-list">${roster}</div></section>
       <section class="club-panel"><h3>${info.name}</h3>
         <p><b>Awareness ${info.awareness + player.film}</b>${player.film ? ` (+${player.film} from film)` : ''} · ${player.fatigue}% fatigue</p>
+        <ul class="athlete-traits" aria-label="Shared athletic attributes">${TRAITS.map(trait => `<li><b>${ATHLETIC_TRAITS[trait].name} ${player.athletics[trait]}/${MAX_TRAIT}</b>
+          <small>${ATHLETIC_TRAITS[trait].detail}</small></li>`).join('')}</ul>
         <label class="lineup-choice">Specialty <select data-specialty aria-label="Specialty for ${info.name}" ${editable ? '' : 'disabled'}>
           ${Object.keys(SPECIALTIES).map(key => `<option ${key === player.specialty ? 'selected' : ''}>${key}</option>`).join('')}</select></label>
         <p class="muted">${SPECIALTIES[player.specialty]}</p><ul class="sport-stats">${stats}</ul>
         ${editable ? `<p class="muted">${canTrain ? 'One training session available this week.' : 'Training used this week.'}</p>
         <div class="club-actions">${allowedSports.map(sport => `<button data-train="${sport}" ${canTrain ? '' : 'disabled'}>Train ${SPORT[sport]}</button>`).join('')}
         <button data-train="film" ${canTrain && player.film < MAX_FILM_BONUS ? '' : 'disabled'}>Study film (+1 awareness)</button>
-        <button data-train="recovery" ${canTrain && player.fatigue > 0 ? '' : 'disabled'}>Recover (−28 fatigue)</button></div>` : ''}
+        <button data-train="recovery" ${canTrain && player.fatigue > 0 ? '' : 'disabled'}>Recover (−28 fatigue)</button>
+        ${TRAITS.map(trait => `<button data-train="${trait}" ${canTrain && player.athletics[trait] < MAX_TRAIT ? '' : 'disabled'}>Train ${ATHLETIC_TRAITS[trait].name}</button>`).join('')}</div>` : ''}
       </section>
     </div>${sign}<details class="club-panel rival-records"><summary>Rival records</summary>
       <div class="schedule-scroll"><table class="schedule"><thead><tr><th scope="col">Club</th>
@@ -233,12 +247,13 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       athlete = data.recruit
       message = `${profile(athlete).name} joined the club.`
     } else if (data.train) {
-      const focus = data.train as Sport | 'film' | 'recovery'
+      const focus = data.train as TrainingFocus
       controller.train(athlete, focus)
       const name = profile(athlete).name
       message = focus === 'film' ? `${name} gained 1 awareness across sports.`
         : focus === 'recovery' ? `${name} finished recovery at ${clubAthlete(controller.getClub()!, athlete).fatigue}% fatigue.`
-          : `${name} earned 3 ${SPORT[focus]} XP.`
+          : isAthleticTrait(focus) ? `${name} gained 1 ${ATHLETIC_TRAITS[focus].name.toLowerCase()} across sports.`
+            : `${name} earned 3 ${SPORT[focus]} XP.`
     }
     render()
     if (data.athlete || data.lineup) container.querySelector<HTMLButtonElement>('[aria-pressed="true"]' +
