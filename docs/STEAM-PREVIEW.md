@@ -22,5 +22,16 @@ Run the generated app script with the Steamworks SDK's SteamPipe builder. Previe
 ## Confirm release readiness
 
 - Configure the Windows and Linux launch options with their corresponding executables and install the build through a private Steam branch for testing.
-- On a physical Steam Deck in Gaming Mode, complete both a basketball and a soccer match using only the controller. Check 1280×800 readability, button prompts, name entry, save recovery after restart, and suspend and resume. Record the package or Steam build ID and SteamOS version with the results. [Steam Deck compatibility](https://partner.steamgames.com/doc/steamhardware/compat)
+- Record the physical Steam Deck results below for the exact candidate build. [Steam Deck compatibility](https://partner.steamgames.com/doc/steamhardware/compat)
 - Prepare the store materials and submit the store page and build for Steamworks review. Publish both sports on the paid release together once the reviews and hardware checks are complete. [Steamworks review process](https://partner.steamgames.com/doc/store/review_process)
+
+## Physical Steam Deck test
+
+Record the package or Steam build ID, the SteamOS version, and whether the game ran as the Linux build or the Windows build through Proton. Start in Gaming Mode with the built-in controller. CI runs the [onboarding and save path](../scripts/controller-flow.mjs) with a simulated gamepad at 1280×800. The rows below require the physical device.
+
+| Case | Pass condition |
+| --- | --- |
+| First run in basketball and soccer | Open **Choose a guided drill**, queue each prompted order, commit, select **Play a full match**, and finish both matches using only the built-in controls. |
+| Readability and prompts | Score, order list, active focus, and play-by-play can be read at 1280×800. Text size and high contrast apply to both sports, and the control labels match the inputs. |
+| Quit and resume | Open a club season, commit a turn, quit the game, and reopen it. **Continue saved fixture** restores the same score, turn, and play-by-play. Commit another turn. |
+| Suspend and resume | Suspend with orders queued during a club fixture. After waking, the queued orders and focus remain usable. The turn advances only when you commit. |

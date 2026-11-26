@@ -256,6 +256,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
             : `${name} earned 3 ${SPORT[focus]} XP.`
     }
     render()
+    if (data.season) container.querySelector<HTMLButtonElement>('[data-action="play"]')?.focus()
     if (data.athlete || data.lineup) container.querySelector<HTMLButtonElement>('[aria-pressed="true"]' +
       (data.athlete ? `[data-athlete="${athlete}"]` : `[data-lineup="${lineupSport}"]`))?.focus()
   }, { signal })

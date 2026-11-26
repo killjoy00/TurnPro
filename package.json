@@ -11,7 +11,7 @@
     "check": "tsc && npm test",
     "test": "node --test",
     "simulate": "node scripts/simulate.mjs",
-    "smoke": "node scripts/browser-smoke.mjs && node scripts/gamepad-smoke.mjs && node scripts/launch-smoke.mjs",
+    "smoke": "node scripts/browser-smoke.mjs && node scripts/gamepad-smoke.mjs && node scripts/launch-smoke.mjs && node scripts/controller-flow.mjs",
     "simulate:soccer": "node scripts/simulate-soccer.mjs",
     "simulate:playtest": "node scripts/playtest-audit.mjs",
     "desktop:package": "npm run build && node scripts/package-desktop.mjs",
