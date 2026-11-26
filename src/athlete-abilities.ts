@@ -2,6 +2,12 @@ import { closestPointOnSegment, distance, type Point } from './math.ts'
 import type { AthleteSnapshot } from './match.ts'
 
 export const SIGNATURES = {
+  relay: {
+    label: 'One-touch relay',
+    specialty: 'Playmaker',
+    slot: 'Active',
+    detail: 'Pick a second teammate. If the first pass reaches this athlete, they immediately pass to that teammate. A turn can use one relay.',
+  },
   'cut-and-finish': {
     label: 'Cut and finish',
     specialty: 'Finisher',

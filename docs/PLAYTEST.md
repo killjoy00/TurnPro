@@ -18,9 +18,13 @@ For each sport, note the first time you had to guess what to do, one result you 
 
 ## Athlete builds
 
-Give a basketball or soccer athlete three XP in that sport, set their specialty to Finisher, and use the available weekly session to learn **Cut and finish**. In a fixture, queue the cut and a teammate's pass. Check whether the order preview and the play-by-play explain why a shot happened or why the move stalled.
+Give a basketball or soccer athlete three XP in that sport and three Finisher mastery through fixtures or general training. Use the available weekly session to learn **Cut and finish**. In a fixture, queue the cut and a teammate's pass. Check whether the order preview and the play-by-play explain why a shot happened or why the move stalled.
 
-In a later week, switch the same athlete to Defender and learn **Jump the lane**. Equip it in place of Cut and finish. Leave the defender unassigned near the corridor to a likely receiver, then try another turn with an explicit defensive order. Check whether the reaction, stamina cost, and recovery tradeoff are clear. Compare the same athlete in both builds and record when you would choose each.
+In a later week, switch the same athlete to Defender, build three Defender mastery, and learn **Jump the lane**. Equip it in place of Cut and finish. Leave the defender unassigned near the corridor to a likely receiver, then try another turn with an explicit defensive order. Check whether the reaction, stamina cost, and recovery tradeoff are clear. Compare the same athlete in both builds and record when you would choose each.
+
+For a three-athlete combination, teach a Playmaker **One-touch relay** and pair a first pass with a relay to a trained Finisher. Compare this with a direct pass using the same lineup. Watch which lane the second pass opens and whether its extra turnover risk is clear.
+
+Before the following fixture, compare a targeted skill drill with general training or recovery. Reach six mastery in a specialty, switch the athlete's active specialty, and try their former passive in a sport where they have six XP.
 
 ## Automated baseline and tuning
 

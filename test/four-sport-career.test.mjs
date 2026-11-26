@@ -135,7 +135,7 @@ test('a version 3 club resumes the same saved fixture with new development initi
     })),
   }
   const migrated = readClub(JSON.stringify(oldSave))
-  assert.equal(migrated.version, 6)
+  assert.equal(migrated.version, 7)
   assert.deepEqual(openClubFixture(migrated), openClubFixture(club))
   assert.deepEqual(migrated, club)
 })

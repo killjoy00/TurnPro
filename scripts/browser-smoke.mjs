@@ -327,14 +327,25 @@ try {
   const buildErrors = []
   builds.on('pageerror', error => buildErrors.push(error.message))
   await builds.goto(game)
-  const trainingClub = createClub('all')
-  trainingClub.roster.find(player => player.id === 'vale').xp.basketball = 3
-  const previousSave = { ...trainingClub, version: 5,
-    roster: trainingClub.roster.map(({ learned, signature, ...player }) => player) }
-  await builds.evaluate(save => localStorage.setItem('turn-pro-club-v1', JSON.stringify(save)), previousSave)
+  const trainingClub = createClub('basketball')
+  const vale = trainingClub.roster.find(player => player.id === 'vale')
+  vale.xp.basketball = 3
+  vale.mastery.Finisher = 3
+  const reed = trainingClub.roster.find(player => player.id === 'reed')
+  reed.xp.basketball = 6
+  reed.mastery.Playmaker = 5
+  const blake = trainingClub.roster.find(player => player.id === 'blake')
+  blake.specialty = 'Playmaker'
+  blake.xp.basketball = 3
+  blake.mastery.Playmaker = 3
+  blake.learned.basketball = ['relay']
+  blake.signature.basketball = 'relay'
+  await builds.evaluate(save => localStorage.setItem('turn-pro-club-v1', JSON.stringify(save)), trainingClub)
   await builds.reload()
   await builds.getByRole('button', { name: 'Club season' }).click()
+  await builds.getByRole('combobox', { name: 'Basketball ability for Reed' }).selectOption('thread-pass')
   await builds.getByRole('button', { name: /^Vale Finisher/ }).click()
+  assert.equal(await builds.getByLabel('Finisher mastery').getAttribute('value'), '3')
   const signature = builds.getByRole('combobox', { name: 'Basketball signature for Vale' })
   assert.equal(await signature.isDisabled(), true)
   await builds.getByRole('button', { name: 'Learn cut and finish for Basketball' }).click()
@@ -346,15 +357,31 @@ try {
   await signature.selectOption('')
   await signature.selectOption('cut-and-finish')
   await builds.getByRole('button', { name: 'Play fixture' }).click()
-  await builds.getByRole('button', { name: /^Pass: Vale/ }).click()
+  await builds.getByRole('button', { name: /^Pass: Blake/ }).click()
+  await builds.getByRole('button', { name: /Blake, 100 stamina/ }).click()
+  await builds.getByRole('button', { name: /^Relay: Vale/ }).click()
   await builds.getByRole('button', { name: /Vale, 100 stamina/ }).click()
   await builds.getByRole('button', { name: /^Cut and finish to Left wing/ }).click()
   await builds.getByRole('button', { name: 'Commit turn' }).click()
   const builtTurn = await builds.locator('.timeline').first().innerText()
-  assert.match(builtTurn, /Vale · Cut and finish to Left wing/)
+  assert.match(builtTurn, /Blake · Relay: Vale.*Vale · Cut and finish to Left wing/)
   await builds.reload()
   await builds.getByRole('button', { name: 'Continue saved fixture' }).click()
   assert.equal(await builds.locator('.timeline').first().innerText(), builtTurn)
+  for (let turn = 2; turn <= 12; turn++) await builds.getByRole('button', { name: 'Commit turn' }).click()
+  await builds.getByText('Mastery milestones · 1', { exact: true }).click()
+  assert.match(await builds.locator('#actions').innerText(), /Reed · Playmaker · Mastered/)
+  await builds.getByRole('button', { name: 'Back to club' }).click()
+  await builds.getByRole('combobox', { name: 'Specialty for Reed' }).selectOption('Defender')
+  assert.equal(await builds.getByRole('combobox', { name: 'Basketball ability for Reed' }).inputValue(), 'thread-pass')
+  await builds.locator('[data-drills="basketball"]').click()
+  await builds.getByRole('button', { name: 'Train shooting in Basketball' }).click()
+  assert.match(await builds.locator('.club-status').innerText(), / gained 1 shooting and 1 Basketball XP/)
+  assert.equal(await builds.locator('[data-drills="basketball"]:focus').count(), 1)
+  await builds.reload()
+  await builds.getByRole('button', { name: 'Club season' }).click()
+  await builds.locator('[data-drills="basketball"]').click()
+  assert.match(await builds.locator('.technical-options').first().innerText(), /Shooting 1\/2/)
   assert.deepEqual(buildErrors, [])
   await builds.close()
 

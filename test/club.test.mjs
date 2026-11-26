@@ -112,7 +112,7 @@ test('abilities unlock by specialty and sport, and the club carries them into an
   club = equip(equip(club, 'reed', 'basketball', 'thread-pass'), 'reed', 'soccer', 'second-wind')
   assert.equal(ratings(clubAthlete(club, 'reed'), 'basketball').technique, 'thread-pass')
   assert.equal(ratings(clubAthlete(club, 'reed'), 'soccer').technique, 'second-wind')
-  assert.equal(clubAthlete(specialize(club, 'reed', 'Defender'), 'reed').equipped.basketball, null)
+  assert.equal(clubAthlete(specialize(club, 'reed', 'Defender'), 'reed').equipped.basketball, 'thread-pass')
   assert.deepEqual(readClub(JSON.stringify(club)), club)
   assert.equal(openClubFixture(beginClubFixture(club)).match.athletes[0].technique, 'thread-pass')
 })
@@ -122,8 +122,10 @@ test('first-season saves from the previous build migrate without losing the acti
   const resolved = resolveClubTurn(club, openClubFixture(club))
   club = resolved.club
   const { version, season, history, recruitedSeason, roster, league, ...state } = club
-  const v1 = { ...state, version: 1, roster: roster.map(({ equipped, ...player }) => player) }
+  const v1 = { ...state, version: 1, roster: roster.map(({ equipped, mastery, technical, ...player }) => player) }
   const migrated = readClub(JSON.stringify(v1))
-  assert.deepEqual(migrated, club)
+  const reed = clubAthlete(club, 'reed')
+  assert.equal(reed.mastery.Playmaker, 1)
+  assert.equal(clubAthlete(migrated, 'reed').mastery.Playmaker, 0)
   assert.deepEqual(openClubFixture(migrated), openClubFixture(club))
 })
