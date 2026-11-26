@@ -1,3 +1,4 @@
+import { laneReaction, LANE_REACTION_COST } from './athlete-abilities.ts'
 import { contactBonus, fatiguePenalty, movementMultiplier, recoveryBonus } from './athletics.ts'
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
 import {
@@ -49,6 +50,7 @@ export type Command =
   | { athlete: string; kind: 'through'; target: string }
   | { athlete: string; kind: 'cross'; target: string }
   | { athlete: string; kind: 'run'; target: number }
+  | { athlete: string; kind: 'cut-and-finish'; target: number }
 
 export const ACTIONS = {
   carry: { label: 'Carry forward', stamina: 12 },
@@ -57,6 +59,7 @@ export const ACTIONS = {
   through: { label: 'Through ball', stamina: 9 },
   cross: { label: 'Cross', stamina: 9 },
   run: { label: 'Run', stamina: 9 },
+  'cut-and-finish': { label: 'Cut and finish', stamina: 17 },
   press: { label: 'Press ball carrier', stamina: 9 },
   hold: { label: 'Hold defensive line', stamina: 5 },
 } satisfies Record<Command['kind'], { label: string; stamina: number }>
@@ -185,6 +188,10 @@ export function legalCommands(match: Match, id: string): Command[] {
     LANES.forEach((_, lane) => {
       if (distance(player.position, runTarget(match, player, lane)) >= 5) {
         commands.push({ athlete: id, kind: 'run', target: lane })
+        if (player.signature === 'cut-and-finish'
+          && distance(runDestination(match, player, lane), attackGoal(match, player.team)) <= SHOT_RANGE + 4) {
+          commands.push({ athlete: id, kind: 'cut-and-finish', target: lane })
+        }
       }
     })
   } else if (player.slot !== 0) {
@@ -196,7 +203,7 @@ export function legalCommands(match: Match, id: string): Command[] {
 
 export function commandLabel(match: Match, command: Command): string {
   const label = ACTIONS[command.kind].label
-  if (command.kind === 'run') return `Run into the ${LANES[command.target]}`
+  if (command.kind === 'run' || command.kind === 'cut-and-finish') return `${label} into the ${LANES[command.target]}`
   if ('target' in command) return `${label} to ${athleteById(match, command.target).name}`
   return label
 }
@@ -204,6 +211,7 @@ export function commandLabel(match: Match, command: Command): string {
 export function commandTarget(match: Match, command: Command): Point | undefined {
   const player = athleteById(match, command.athlete)
   const holder = athleteById(match, match.holder)
+  if (command.kind === 'cut-and-finish') return runDestination(match, player, command.target)
   if (command.kind === 'run') return runTarget(match, player, command.target)
   if (command.kind === 'press') return holder.position
   if (command.kind === 'shoot') return attackGoal(match, player.team)
@@ -250,6 +258,7 @@ function movement(match: Match, player: Footballer, holder: Footballer, command?
       travel = speed * 0.83
       break
     case 'run':
+    case 'cut-and-finish':
       return runDestination(match, player, command.target)
     case 'press':
       target = stepToward(holder.position, player.position, 1)
@@ -332,7 +341,8 @@ export function previewPass(match: Match, command: Pass, plan: readonly Command[
 function resolvePass(
   match: Match, initial: Match, holder: Footballer, command: Extract<Command, { target: string }>,
   roll: () => number, emit: (kind: EventKind, text: string) => void,
-) {
+  react: (reception: Point) => void,
+): Footballer | undefined {
   const target = athleteById(match, command.target)
   if (startsOffside(initial, athleteById(initial, holder.id), athleteById(initial, target.id))) {
     const defender = nearBall(match, target, Infinity)[0]
@@ -341,6 +351,7 @@ function resolvePass(
     return
   }
   const reception = passArrival(match, holder, target.position, command.kind)
+  if (command.kind !== 'cross') react(reception)
   const { chance, defenders, range } = passEstimate(match, holder, reception, command.kind)
   const coverage = defenders.length ? `${defenders.map(player => player.name).join(' and ')} in the lane` : 'clear lane'
   const detail = `${Math.round(range)} m, ${coverage}, ${Math.round(chance)}% completion`
@@ -348,7 +359,7 @@ function resolvePass(
     target.position = reception
     match.holder = target.id
     emit('ball', `${holder.name} finds ${target.name} with a ${ACTIONS[command.kind].label.toLowerCase()} (${detail}).`)
-    return
+    return target
   }
   const defender = defenders[0] ?? nearBall(match, target, Infinity)[0]
   match.holder = defender.id
@@ -375,33 +386,55 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     const initial = athleteById(match, player.id)
     const command = commands.get(player.id)
     player.position = movement(match, initial, originalHolder, command)
-    if (command?.kind === 'carry' || command?.kind === 'run' || command?.kind === 'press') {
+    if (command?.kind === 'carry' || command?.kind === 'run' || command?.kind === 'cut-and-finish' || command?.kind === 'press') {
       const meters = Math.round(distance(initial.position, player.position))
       emit('movement', `${player.name} ${command.kind === 'carry' ? 'carries' : command.kind === 'press' ? 'closes down' : 'runs'} ${meters} m.`)
     }
   }
 
-  const ballCommand = commands.get(holder.id)
-  if (ballCommand?.kind === 'shoot') {
-    const shot = shotEstimate(next, holder)
-    const defense = otherTeam(holder.team)
+  let reacted: string | undefined
+  function react(reception: Point) {
+    const action = laneReaction(opponents(next, holder).filter(player => player.slot !== 0 && !commands.has(player.id)),
+      holder.position, reception, moveRange)
+    if (!action) return
+    action.athlete.position = action.point
+    reacted = action.athlete.id
+    emit('movement', `${action.athlete.name} jumps the passing lane.`)
+  }
+
+  function takeShot(shooter: Footballer) {
+    const shot = shotEstimate(next, shooter)
+    const defense = otherTeam(shooter.team)
     const keeper = athleteById(next, `${defense}-0`)
     const detail = `${Math.round(shot.range)} m, ${shot.pressure} closing, ${shot.goal}% goal chance`
     if (roll() >= shot.onTarget) {
       keeper.position = oriented(next, defense, { x: 5.5, y: MIDFIELD.y })
       next.holder = keeper.id
-      emit('restart', `${holder.name} shoots wide (${detail}). Goal kick for ${teamNames(next)[defense]}.`)
+      emit('restart', `${shooter.name} shoots wide (${detail}). Goal kick for ${teamNames(next)[defense]}.`)
     } else if (roll() < shot.save) {
       next.holder = keeper.id
-      emit('save', `${keeper.name} saves ${holder.name}'s shot and holds it (${detail}).`)
+      emit('save', `${keeper.name} saves ${shooter.name}'s shot and holds it (${detail}).`)
     } else {
-      next.score[holder.team] += 1
-      emit('score', `${holder.name} scores for ${teamNames(next)[holder.team]} (${detail}).`)
+      next.score[shooter.team] += 1
+      emit('score', `${shooter.name} scores for ${teamNames(next)[shooter.team]} (${detail}).`)
       kickoff(next, defense)
       emit('restart', `${teamNames(next)[defense]} restart at midfield.`)
     }
-  } else if (ballCommand && 'target' in ballCommand && ballCommand.kind !== 'run') {
-    resolvePass(next, match, holder, ballCommand, roll, emit)
+  }
+
+  const ballCommand = commands.get(holder.id)
+  if (ballCommand?.kind === 'shoot') {
+    takeShot(holder)
+  } else if (ballCommand && (ballCommand.kind === 'pass' || ballCommand.kind === 'through' || ballCommand.kind === 'cross')) {
+    const receiver = resolvePass(next, match, holder, ballCommand, roll, emit, react)
+    if (receiver && commands.get(receiver.id)?.kind === 'cut-and-finish') {
+      if (distance(receiver.position, attackGoal(next, receiver.team)) <= SHOT_RANGE) {
+        emit('ball', `${receiver.name} cuts into space and shoots first time.`)
+        takeShot(receiver)
+      } else {
+        emit('ball', `${receiver.name} receives outside shooting range and holds the ball.`)
+      }
+    }
   } else {
     const challenger = nearBall(next, holder, 3.4).find(player => commands.get(player.id)?.kind === 'press')
     if (challenger) {
@@ -422,7 +455,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   for (const player of next.athletes) {
     const command = commands.get(player.id)
     const recovery = (player.technique === 'second-wind' ? 9 : 5) + recoveryBonus(player)
-    player.stamina = clamp(player.stamina + (command ? -ACTIONS[command.kind].stamina : recovery), 0, 100)
+    player.stamina = clamp(player.stamina + (command ? -ACTIONS[command.kind].stamina : player.id === reacted ? -LANE_REACTION_COST : recovery), 0, 100)
   }
   next.randomState = random.state
   next.turn += 1

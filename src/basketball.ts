@@ -1,3 +1,4 @@
+import { laneReaction, LANE_REACTION_COST } from './athlete-abilities.ts'
 import { contactBonus, fatiguePenalty, movementMultiplier, recoveryBonus } from './athletics.ts'
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
 
@@ -38,6 +39,7 @@ export type Command =
   | { athlete: string; kind: 'kickout'; target: string }
   | { athlete: string; kind: 'mark' | 'deny'; target: string }
   | { athlete: string; kind: 'cut'; target: number }
+  | { athlete: string; kind: 'cut-and-finish'; target: number }
 
 export const ACTIONS = {
   pass: { label: 'Pass', stamina: 6 },
@@ -47,6 +49,7 @@ export const ACTIONS = {
   finish: { label: 'Drive and finish', stamina: 19 },
   kickout: { label: 'Drive and kick out to', stamina: 17 },
   cut: { label: 'Cut', stamina: 10 },
+  'cut-and-finish': { label: 'Cut and finish', stamina: 18 },
   screen: { label: 'Set screen', stamina: 8 },
   mark: { label: 'Mark', stamina: 8 },
   deny: { label: 'Deny pass', stamina: 8 },
@@ -141,7 +144,11 @@ export function legalCommands(match: Match, id: string): Command[] {
     if (distance(athlete.position, COURT.hoop) <= 34) commands.push({ athlete: id, kind: 'catch-shoot' })
     if (distance(athlete.position, holder.position) <= 15) commands.push({ athlete: id, kind: 'screen' })
     LANDMARKS.forEach((point, target) => {
-      if (distance(athlete.position, point) > 3) commands.push({ athlete: id, kind: 'cut', target })
+      if (distance(athlete.position, point) <= 3) return
+      commands.push({ athlete: id, kind: 'cut', target })
+      if (athlete.signature === 'cut-and-finish' && distance(point, COURT.hoop) <= 34) {
+        commands.push({ athlete: id, kind: 'cut-and-finish', target })
+      }
     })
   } else {
     commands.push({ athlete: id, kind: 'protect' }, { athlete: id, kind: 'stay' })
@@ -158,7 +165,7 @@ export function legalCommands(match: Match, id: string): Command[] {
 export function commandLabel(match: Match, command: Command): string {
   const label = ACTIONS[command.kind].label
   if (command.kind === 'kickout') return `${label} ${athleteById(match, command.target).name}`
-  if (command.kind === 'cut') return `${label} to ${LANDMARKS[command.target].name}`
+  if (command.kind === 'cut' || command.kind === 'cut-and-finish') return `${label} to ${LANDMARKS[command.target].name}`
   if ('target' in command) return `${label}: ${athleteById(match, command.target).name}`
   return label
 }
@@ -235,7 +242,8 @@ function assignment(match: Match, athlete: Athlete, command: Command | undefined
     case 'stay': return stepToward(matchedAthlete(match, athlete).position, COURT.hoop, 2.3)
     case 'switch': return stepToward(matchedAthlete(match, athlete).position, COURT.hoop, 4)
     case 'help': return stepToward(COURT.hoop, holder.position, 10)
-    case 'cut': return LANDMARKS[command.target]
+    case 'cut':
+    case 'cut-and-finish': return LANDMARKS[command.target]
     case 'protect': return { x: 25, y: 11 }
     case 'mark': return stepToward(athleteById(match, command.target).position, COURT.hoop, 2.4)
     case 'deny': return stepToward(athleteById(match, command.target).position, holder.position, 4)
@@ -342,9 +350,10 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     const from = athlete.position
     const traveled = moveAthlete(athlete, destinations.get(athlete.id)!, reach(athlete, Boolean(command)) * adjustment, next.athletes)
     if (traveled > 0) moves.push({ athlete: athlete.id, from, to: athlete.position })
-    if (command?.kind === 'cut' || drives(command)) {
+    const cuts = command?.kind === 'cut' || command?.kind === 'cut-and-finish'
+    if (cuts || drives(command)) {
       emit('movement', traveled >= 2
-        ? `${athlete.name} ${command?.kind === 'cut' ? 'cuts' : 'drives'} ${Math.round(traveled)} ft.`
+        ? `${athlete.name} ${cuts ? 'cuts' : 'drives'} ${Math.round(traveled)} ft.`
         : `${athlete.name}'s path is crowded.`)
     }
     if (command?.kind === 'help' && driving && traveled >= 2) {
@@ -365,8 +374,20 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     })
   }
 
+  let reacted: string | undefined
   function passBall(target: string, kickout: boolean) {
     const receiver = athleteById(next, target)
+    const reaction = laneReaction(next.athletes.filter(athlete => athlete.team === defense
+      && !commands.has(athlete.id) && !screened.has(athlete.id)), holder.position, receiver.position, reach)
+    if (reaction) {
+      const { athlete, point } = reaction
+      const from = athlete.position
+      if (moveAthlete(athlete, point, reach(athlete), next.athletes) > 0) {
+        reacted = athlete.id
+        emit('movement', `${athlete.name} jumps the passing lane.`,
+          { type: 'move', moves: [{ athlete: athlete.id, from, to: athlete.position }] })
+      }
+    }
     const lane = next.athletes.filter(athlete => athlete.team === defense && !screened.has(athlete.id)
       && distanceToSegment(athlete.position, holder.position, receiver.position) <= 3)
     const range = distance(holder.position, receiver.position)
@@ -381,8 +402,12 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       const read = kickout ? (pressure > 0 ? ' with the shooter covered' : ' for an open look') : ''
       emit('ball', `${holder.name} ${kickout ? 'kicks out to' : 'finds'} ${receiver.name}${read} (${passDetail}).`,
         { type: 'ball', action: 'pass', from: holder.position, to: receiver.position, holder: receiver.id })
-      if (commands.get(receiver.id)?.kind === 'catch-shoot') {
-        emit('ball', `${receiver.name} catches and shoots.`)
+      const order = commands.get(receiver.id)?.kind
+      if (order === 'cut-and-finish' && distance(receiver.position, COURT.hoop) > 34) {
+        emit('ball', `${receiver.name} catches outside shooting range and holds the ball.`)
+      } else if (order === 'catch-shoot' || order === 'cut-and-finish') {
+        emit('ball', order === 'cut-and-finish'
+          ? `${receiver.name} cuts, catches and shoots.` : `${receiver.name} catches and shoots.`)
         takeShot(receiver)
       }
     } else {
@@ -458,7 +483,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   for (const athlete of next.athletes) {
     const command = commands.get(athlete.id)
     const recovery = (athlete.technique === 'second-wind' ? 10 : 6) + recoveryBonus(athlete)
-    athlete.stamina = clamp(athlete.stamina + (command ? -ACTIONS[command.kind].stamina : recovery), 0, 100)
+    athlete.stamina = clamp(athlete.stamina + (command ? -ACTIONS[command.kind].stamina : athlete.id === reacted ? -LANE_REACTION_COST : recovery), 0, 100)
   }
   next.randomState = random.state
   next.turn += 1

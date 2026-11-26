@@ -1,4 +1,5 @@
 import { clamp } from './math.ts'
+import { SIGNATURES, SIGNATURE_XP, supportsSignatures, type Signature } from './athlete-abilities.ts'
 import type { Appearance, AthleteBuild, PlanCommand, Technique } from './match.ts'
 import { PREVIOUS_RULES_VERSION as ORIGINAL_SOCCER_RULES } from './soccer.ts'
 import { isFormation, type Formation } from './football.ts'
@@ -115,10 +116,12 @@ export interface ClubAthlete {
   athletics: Athletics
   roleStarts: Record<Sport, Record<string, number>>
   equipped: Record<Sport, Technique | null>
+  learned: Record<Sport, Signature[]>
+  signature: Record<Sport, Signature | null>
 }
 
 export interface Club extends SeasonRecord {
-  version: 5
+  version: 6
   season: number
   history: SeasonRecord[]
   recruitedSeason: number
@@ -134,14 +137,21 @@ export function profile(id: string): Profile {
   return found
 }
 
+function emptySignatures(): Pick<ClubAthlete, 'learned' | 'signature'> {
+  return {
+    learned: { basketball: [], soccer: [], hockey: [], football: [] },
+    signature: { basketball: null, soccer: null, hockey: null, football: null },
+  }
+}
+
 function makeAthlete(entry: Profile): ClubAthlete {
   return { id: entry.id, specialty: entry.specialty, xp: { ...INITIAL_XP }, fatigue: 0, film: 0, equipped: { ...INITIAL_TECHNIQUES },
-    athletics: { ...UNTRAINED }, roleStarts: emptyRoleStarts() }
+    athletics: { ...UNTRAINED }, roleStarts: emptyRoleStarts(), ...emptySignatures() }
 }
 
 export function createClub(mode: SeasonMode): Club {
   return {
-    version: 5, season: 1, history: [], recruitedSeason: 0, mode, league: { seedOffset: 0, otherResults: [] }, roster: profiles.map(makeAthlete),
+    version: 6, season: 1, history: [], recruitedSeason: 0, mode, league: { seedOffset: 0, otherResults: [] }, roster: profiles.map(makeAthlete),
     lineups: structuredClone(DEFAULT_LINEUPS),
     trainedWeek: 0, results: [], pending: null,
   }
@@ -252,6 +262,37 @@ export function equip(club: Club, id: string, sport: Sport, technique: Technique
   return { ...club, roster: club.roster.map(entry => entry.id === id ? updated : entry) }
 }
 
+export function canLearnSignature(player: ClubAthlete, sport: Sport, signature: Signature): boolean {
+  return supportsSignatures(sport) && Object.hasOwn(SIGNATURES, signature)
+    && player.specialty === SIGNATURES[signature].specialty && player.xp[sport] >= SIGNATURE_XP
+    && !player.learned[sport].includes(signature)
+}
+
+export function learnSignature(club: Club, id: string, sport: Sport, signature: Signature): Club {
+  const week = openWeek(club)
+  if (club.trainedWeek === week) throw new Error('You have used this week’s training session.')
+  const player = clubAthlete(club, id)
+  if (!seasonSports(club.mode).includes(sport) || !canLearnSignature(player, sport, signature)) {
+    throw new Error('This signature play cannot be learned yet.')
+  }
+  const updated = {
+    ...player,
+    learned: { ...player.learned, [sport]: [...player.learned[sport], signature] },
+    signature: { ...player.signature, [sport]: player.signature[sport] ?? signature },
+  }
+  return { ...club, trainedWeek: week, roster: club.roster.map(entry => entry.id === id ? updated : entry) }
+}
+
+export function equipSignature(club: Club, id: string, sport: Sport, signature: Signature | null): Club {
+  openWeek(club)
+  const player = clubAthlete(club, id)
+  if (!supportsSignatures(sport) || (signature !== null && !player.learned[sport].includes(signature))) {
+    throw new Error('Learn this signature play before equipping it.')
+  }
+  const updated = { ...player, signature: { ...player.signature, [sport]: signature } }
+  return { ...club, roster: club.roster.map(entry => entry.id === id ? updated : entry) }
+}
+
 export function development(player: ClubAthlete, sport: Sport): number {
   return Math.min(3, Math.floor(player.xp[sport] / 3))
 }
@@ -274,6 +315,7 @@ export function ratings(player: ClubAthlete, sport: Sport, slot?: number): Athle
     keeping: entry.keeper ? 6 + skill : 0,
     technique: player.equipped[sport] ?? undefined,
   }
+  if (player.signature[sport]) result.signature = player.signature[sport]
   if (Object.values(player.athletics).some(Boolean)) result.athletics = { ...player.athletics }
   if (slot !== undefined) {
     const role = roleName(sport, slot)
@@ -383,7 +425,7 @@ function migrateFourSports(data: Record<string, unknown>): Record<string, unknow
   }
 }
 
-function migrateClub(data: Record<string, unknown>): unknown {
+function migrateAthletics(data: Record<string, unknown>): Record<string, unknown> {
   if (data.version === 5) return data
   const previous = migrateFourSports(data)
   if (previous.version !== 4 || !Array.isArray(previous.roster)) return previous
@@ -391,14 +433,22 @@ function migrateClub(data: Record<string, unknown>): unknown {
     ? { ...player, athletics: { ...UNTRAINED }, roleStarts: emptyRoleStarts() } : player) }
 }
 
+function migrateClub(data: Record<string, unknown>): unknown {
+  if (data.version === 6) return data
+  const previous = migrateAthletics(data)
+  if (previous.version !== 5 || !Array.isArray(previous.roster)) return previous
+  return { ...previous, version: 6, roster: previous.roster.map(player => record(player)
+    ? { ...player, ...emptySignatures() } : player) }
+}
+
 export function readClub(raw: string): Club {
   if (raw.length > 128_000) throw new Error('This file is too large to be a club save.')
   const data: unknown = JSON.parse(raw)
-  if (!record(data) || ![1, 2, 3, 4, 5].includes(data.version as number) || !isMode(data.mode)) {
+  if (!record(data) || ![1, 2, 3, 4, 5, 6].includes(data.version as number) || !isMode(data.mode)) {
     throw new Error('This is an unsupported club save.')
   }
   const club = migrateClub(data) as Club
-  if (club.version !== 5 || !Array.isArray(club.history) || club.season !== club.history.length + 1
+  if (club.version !== 6 || !Array.isArray(club.history) || club.season !== club.history.length + 1
     || !integer(club.recruitedSeason, 0, club.season)
     || !club.history.every((entry, index) => seasonValid(entry, index + 1, true))) {
     throw new Error('The past seasons in this save are invalid.')
@@ -408,12 +458,18 @@ export function readClub(raw: string): Club {
       || typeof player.specialty !== 'string' || !Object.hasOwn(SPECIALTIES, player.specialty) || !integer(player.fatigue, 0, 65)
       || !integer(player.film, 0, MAX_FILM_BONUS) || !record(player.xp) || !record(player.equipped)
       || !record(player.athletics) || !Object.keys(ATHLETIC_TRAITS).every(trait => integer(player.athletics[trait as AthleticTrait], 0, MAX_TRAIT))
-      || !record(player.roleStarts)
+      || !record(player.roleStarts) || !record(player.learned) || !record(player.signature)
       || SPORTS.some(sport => {
         const roles = player.roleStarts[sport]
         if (!record(roles) || Object.entries(roles).some(([role, starts]) =>
           !ROLES[sport].some((_, slot) => roleName(sport, slot) === role) || !integer(starts, 0, MAX_ROLE_STARTS))) return true
         if (!integer(player.xp[sport], 0, Number.MAX_SAFE_INTEGER)) return true
+        const learned = player.learned[sport]
+        const signature = player.signature[sport]
+        if (!Array.isArray(learned) || learned.length > Object.keys(SIGNATURES).length || new Set(learned).size !== learned.length
+          || learned.some(key => !supportsSignatures(sport) || typeof key !== 'string'
+            || !Object.hasOwn(SIGNATURES, key) || player.xp[sport] < SIGNATURE_XP)
+          || (signature !== null && !learned.includes(signature))) return true
         const selected = player.equipped[sport]
         return selected !== null && (typeof selected !== 'string' || !Object.hasOwn(TECHNIQUES, selected)
           || !unlocked(player, sport, selected))
