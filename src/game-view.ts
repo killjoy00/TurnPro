@@ -71,7 +71,7 @@ interface PracticeStep {
 export interface SeasonMatch<S extends MatchSnapshot, C extends PlanCommand> {
   match: S
   history: LoggedTurn[]
-  saveTurn(orders: readonly C[], match: S, formation?: Formation): readonly string[]
+  saveTurn(orders: readonly C[], match: S, formation: Formation | undefined, opponent: readonly C[]): readonly string[]
 }
 
 export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
@@ -406,7 +406,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     const practicing = steps.length > 0
     const opponent = sport.opponent(match, 1)
     const resolution = sport.resolveTurn(match, [plan, opponent])
-    masteryMilestones = season?.saveTurn(plan, resolution.match, sport.formation?.current(match)) ?? []
+    masteryMilestones = season?.saveTurn(plan, resolution.match, sport.formation?.current(match), opponent) ?? []
     const focusWasInMatch = element('match-screen').contains(document.activeElement)
     if (!motion.matches && resolution.events.some(event => event.cue && event.cue.type !== 'plan')) {
       playback = new AbortController()

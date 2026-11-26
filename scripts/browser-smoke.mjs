@@ -286,7 +286,8 @@ try {
   assert.match(await career.locator('.club-readiness').innerText(), /Avg stamina 100/)
   await career.getByRole('button', { name: 'Train Speed' }).click()
   assert.match(await career.locator('.club-status').innerText(), /Reed gained 1 speed across sports/)
-  assert.match(await career.locator('.athlete-traits').innerText(), /Speed 1\/2/)
+  assert.match(await career.locator('.athlete-traits li').filter({ hasText: 'Speed 1' }).innerText(), /1\/2 trained/)
+  assert.match(await career.locator('.athlete-traits li').filter({ hasText: 'Composure 1' }).innerText(), /\+1 natural/)
   assert.equal(await career.getByRole('button', { name: 'Train Ice hockey' }).isDisabled(), true)
   for (const turns of [12, 18]) {
     await career.getByRole('button', { name: 'Play fixture' }).click()
@@ -422,6 +423,23 @@ try {
   await mobile.getByRole('button', { name: 'Close', exact: true }).tap()
   await mobile.setViewportSize({ width: 320, height: 760 })
   assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth), 320)
+  for (const [sport, drill, outcome] of [
+    ['basketball', 'Practice the pick-and-roll', /catches on the roll and shoots/],
+    ['soccer', 'Practice switching play', /switch of play/],
+    ['hockey', 'Practice a bank breakout', /banks the puck along the boards/],
+    ['football', 'Practice play-action', /run fake draws 2 defenders/],
+  ]) {
+    await page.getByRole('combobox', { name: 'Sport', exact: true }).selectOption(sport)
+    await page.getByRole('button', { name: drill, exact: true }).click()
+    const steps = await page.locator('#practice-checklist li').count()
+    assert.ok(steps >= 2)
+    for (let step = 0; step < steps; step++) {
+      await page.getByRole('button', { name: 'Find next order' }).click()
+      await page.locator('#actions [data-command]:focus').click()
+    }
+    await page.getByRole('button', { name: sport === 'football' ? 'Commit snap' : 'Commit turn' }).click()
+    assert.match(await page.locator('.timeline').first().innerText(), outcome)
+  }
   await page.getByRole('button', { name: 'How to play' }).click()
   await page.getByRole('button', { name: 'Playtest feedback' }).click()
   await page.getByRole('button', { name: 'Stop recording' }).click()

@@ -16,6 +16,15 @@ Try the first coached play without hints beyond the game. Rotate the starting sp
 
 For each sport, note the first time you had to guess what to do, one result you can explain, and whether you would play another match. Reopen **Playtest feedback** and select **Download feedback** when done. If you already have a club, export its save before using a fresh test profile.
 
+## Tactical counters
+
+| Drill | Compare |
+| --- | --- |
+| Practice the pick-and-roll | Make the rolling pass against normal coverage, then try a switch or paint help in a match. Look for which defender contests the roller. |
+| Practice switching play | Switch to an open far flank. Later, try switching into a marked receiver and compare the projected landing. |
+| Practice a bank breakout | Compare a straight pass through the forecheck with a route off the boards. Queue the receiver’s outlet movement and look for how the estimate changes. |
+| Practice play-action | Compare the catch and sack estimates to a quick pass. See how a slant and protection change the play, then look for an opponent who stays deep. |
+
 ## Athlete builds
 
 Give a basketball or soccer athlete three XP in that sport and three Finisher mastery through fixtures or general training. Use the available weekly session to learn **Cut and finish**. In a fixture, queue the cut and a teammate's pass. Check whether the order preview and the play-by-play explain why a shot happened or why the move stalled.

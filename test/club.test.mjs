@@ -82,7 +82,7 @@ test('corrupted and incompatible saves cannot replace a valid season', () => {
   assert.throws(() => readClub(JSON.stringify(bad)), /lineups/)
   const active = beginClubFixture(club)
   assert.throws(() => openClubFixture(readClub(JSON.stringify({ ...active, pending: { rules: 999, turns: [] } }))), /rules version/)
-  const tampered = { ...active, pending: { ...active.pending, turns: [[{ athlete: '1-0', kind: 'shoot' }]] } }
+  const tampered = { ...active, pending: { ...active.pending, opponentPlans: [null], turns: [[{ athlete: '1-0', kind: 'shoot' }]] } }
   assert.throws(() => openClubFixture(readClub(JSON.stringify(tampered))), /unavailable/)
 })
 

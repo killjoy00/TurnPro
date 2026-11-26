@@ -63,7 +63,7 @@ export interface Match extends MatchSnapshot {
 
 export type Play =
   | { athlete: string; kind: 'inside' | 'sweep-left' | 'sweep-right' | 'punt' | 'field-goal' }
-  | { athlete: string; kind: 'quick-pass' | 'deep-pass'; target: string }
+  | { athlete: string; kind: 'quick-pass' | 'deep-pass' | 'play-action'; target: string }
 export type Support = {
   athlete: string
   kind: 'slant' | 'go' | 'run-block' | 'protect' | 'blitz' | 'fill' | 'cover-short' | 'cover-deep' | 'rush-kick'
@@ -76,6 +76,7 @@ export const ACTIONS = {
   'sweep-right': { label: 'Sweep right', stamina: 4 },
   'quick-pass': { label: 'Quick pass to', stamina: 6 },
   'deep-pass': { label: 'Deep pass to', stamina: 9 },
+  'play-action': { label: 'Play-action to', stamina: 10 },
   punt: { label: 'Punt', stamina: 1 },
   'field-goal': { label: 'Attempt field goal', stamina: 1 },
   slant: { label: 'Cut on a slant', stamina: 8 },
@@ -183,6 +184,14 @@ export function createThirdDownPractice(): Match {
   return match
 }
 
+export function createPlayActionPractice(): Match {
+  const match = createMatch(0)
+  match.yard = 44
+  match.sticks = 50
+  match.down = 2
+  return setFormation(match, 'power')
+}
+
 export function legalCommands(match: Match, id: string): Command[] {
   if (finished(match)) return []
   const player = findAthlete(match.athletes, id)
@@ -197,7 +206,8 @@ export function legalCommands(match: Match, id: string): Command[] {
       options.push({ athlete: id, kind: 'inside' }, { athlete: id, kind: 'sweep-left' }, { athlete: id, kind: 'sweep-right' })
       for (const slot of RECEIVERS) {
         const target = `${player.team}-o-${slot}`
-        options.push({ athlete: id, kind: 'quick-pass', target }, { athlete: id, kind: 'deep-pass', target })
+        options.push({ athlete: id, kind: 'quick-pass', target }, { athlete: id, kind: 'deep-pass', target },
+          { athlete: id, kind: 'play-action', target })
       }
     } else if (player.slot <= 6) {
       options = [{ athlete: id, kind: 'run-block' }, { athlete: id, kind: 'protect' }]
@@ -240,7 +250,8 @@ function laneFor(kind: Play['kind']): number {
 
 function routeReach(kind: Play['kind'], route: Command['kind'] | undefined, receiver: Player): number {
   const base = kind === 'deep-pass' ? (route === 'go' ? 29 : route === 'slant' ? 19 : 22)
-    : (route === 'slant' ? 11 : route === 'go' ? 6 : 8)
+    : kind === 'play-action' ? (route === 'slant' ? 17 : route === 'go' ? 11 : 13)
+      : (route === 'slant' ? 11 : route === 'go' ? 6 : 8)
   return base + (receiver.athletics?.speed ?? 0) + (quickStep(receiver, Boolean(route)) ? 2 : 0)
 }
 
@@ -277,25 +288,29 @@ export function playEstimate(match: Match, play: Play, offense: readonly Command
     const passer = findAthlete(match.athletes, match.holder)
     const route = offense.find(order => order.athlete === play.target)?.kind
     const deep = play.kind === 'deep-pass'
+    const fake = play.kind === 'play-action'
+    const runFits = fake ? count(defense, 'fill') : 0
+    const deception = Math.min(runFits, 2) * 8
+      + (runFits > 0 && count(offense, 'run-block') > 0 ? 5 : 0)
     const lane = formationLane(match, OFFENSE[receiver.slot][5])
-    const coverage = defense.filter(order => order.kind === (deep ? 'cover-deep' : 'cover-short')).reduce((sum, order) => {
+    const coverage = defense.filter(order => order.kind === (deep || fake ? 'cover-deep' : 'cover-short')).reduce((sum, order) => {
       const defender = findAthlete(match.athletes, order.athlete)
       const technique = defender.technique === 'read-play' ? 0.4 : 0
       return sum + (Math.abs(DEFENSE[defender.slot][5] - lane) <= 17 ? 1 : 0.5) + (defender.defense ?? 0) * 0.1 + technique
     }, 0)
-    const pressure = Math.max(0, rush + (deep ? 1 : 0) - blocks)
+    const pressure = Math.max(0, rush + (deep || fake ? 1 : 0) - blocks)
     const fit = deep ? route === 'go' : route === 'slant'
     const fatigue = Math.max(fatiguePenalty(receiver, 70, 0.32), fatiguePenalty(passer, 70, 0.32))
     const talent = ((passer.passing ?? 7) - 7) * 2 + ((passer.awareness ?? 7) - 7) * 1.7 + ((receiver.finishing ?? 7) - 7) * 1.5
     const matchup = (coverage > 0 && passer.technique === 'thread-pass' ? 7 : 0)
       + (coverage === 0 && receiver.technique === 'clean-look' ? 7 : 0)
     return {
-      chance: Math.round(clamp((deep ? 56 : 74) + (fit ? 13 : 0) - pressure * 9 - coverage * 12 - fatigue + talent + matchup
+      chance: Math.round(clamp((deep ? 56 : fake ? 61 : 74) + (fit ? 13 : 0) + deception - pressure * 9 - coverage * 12 - fatigue + talent + matchup
         + FORMATIONS[match.formation ?? 'balanced'].pass, 20, 94)),
-      yards: routeReach(play.kind, route, receiver), sack: clamp((deep ? 7 : 3) + pressure * 7 - blocks * 2, 2, 35),
-      pick: clamp((deep ? 15 : 7) + coverage * 14 + pressure * 5, 4, 52),
+      yards: routeReach(play.kind, route, receiver), sack: clamp((deep || fake ? 7 : 3) + pressure * 7 - blocks * 2, 2, 35),
+      pick: clamp((deep ? 15 : fake ? 11 : 7) + coverage * 14 + pressure * 5, 4, 52),
       factors: [fit ? 'route matched' : '', blocks ? 'pass protection' : '', match.formation ? FORMATIONS[match.formation].name + ' spacing' : '',
-        rush ? `${rush} ${rush === 1 ? 'blitzer' : 'blitzers'}` : '', coverage ? 'defender coverage' : '', fatigue > 0 ? 'fatigue' : ''].filter(Boolean),
+        runFits ? `run fake draws ${runFits} ${runFits === 1 ? 'defender' : 'defenders'}` : '', rush ? `${rush} ${rush === 1 ? 'blitzer' : 'blitzers'}` : '', coverage ? 'defender coverage' : '', fatigue > 0 ? 'fatigue' : ''].filter(Boolean),
     }
   }
   if (play.kind === 'field-goal') {
@@ -409,6 +424,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     const factors = match.rulesVersion !== PREVIOUS_RULES_VERSION && estimate.factors.length
       ? ` · ${estimate.factors.join(', ')}` : ''
     const completion = `${estimate.chance}% catch chance${factors}`
+    if (play.kind === 'play-action') emit('ball', `${quarterback.name} fakes the handoff and looks for ${receiver.name} behind the run defense.`)
     if (roll() < estimate.sack) {
       const yards = 4 + Math.floor(roll() * 0.05)
       const pressure = match.rulesVersion !== PREVIOUS_RULES_VERSION ? ` (${estimate.sack}% sack chance${factors})` : ''

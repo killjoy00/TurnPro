@@ -29,7 +29,8 @@ export function planTurn(match: Match, team: Team, style: FootballStyle = 'balan
     return plan
   }
 
-  const calls = options.filter((order): order is Play => order.athlete === match.holder)
+  // Keep the established opponent choices for saved fixtures that predate stored opponent orders.
+  const calls = options.filter((order): order is Play => order.athlete === match.holder && order.kind !== 'play-action')
   const fieldGoal = calls.find(play => play.kind === 'field-goal')
   const punt = calls.find(play => play.kind === 'punt')
   const deficit = match.score[otherTeam(team)] - match.score[team]

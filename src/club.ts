@@ -38,31 +38,32 @@ interface Profile {
   basketball: number
   soccer: number
   specialty: Specialty
+  naturalTrait: AthleticTrait
   keeper?: boolean
 }
 
 const profiles: Profile[] = [
-  { id: 'reed', name: 'Reed', awareness: 9, basketball: 3, soccer: 1, specialty: 'Playmaker' },
-  { id: 'vale', name: 'Vale', awareness: 6, basketball: 2, soccer: 2, specialty: 'Finisher' },
-  { id: 'blake', name: 'Blake', awareness: 7, basketball: 2, soccer: 3, specialty: 'Defender' },
-  { id: 'diaz', name: 'Diaz', awareness: 6, basketball: 2, soccer: 2, specialty: 'Defender' },
-  { id: 'okafor', name: 'Okafor', awareness: 7, basketball: 3, soccer: 2, specialty: 'Defender' },
-  { id: 'shaw', name: 'Shaw', awareness: 6, basketball: 1, soccer: 3, specialty: 'Defender', keeper: true },
-  { id: 'mora', name: 'Mora', awareness: 5, basketball: 1, soccer: 3, specialty: 'Defender' },
-  { id: 'chen', name: 'Chen', awareness: 8, basketball: 1, soccer: 3, specialty: 'Playmaker' },
-  { id: 'santos', name: 'Santos', awareness: 7, basketball: 1, soccer: 3, specialty: 'Playmaker' },
-  { id: 'adeyemi', name: 'Adeyemi', awareness: 6, basketball: 1, soccer: 3, specialty: 'Finisher' },
-  { id: 'ito', name: 'Ito', awareness: 5, basketball: 1, soccer: 3, specialty: 'Finisher' },
-  { id: 'rowan', name: 'Rowan', awareness: 6, basketball: 2, soccer: 2, specialty: 'Playmaker' },
+  { id: 'reed', name: 'Reed', awareness: 9, basketball: 3, soccer: 1, specialty: 'Playmaker', naturalTrait: 'composure' },
+  { id: 'vale', name: 'Vale', awareness: 6, basketball: 2, soccer: 2, specialty: 'Finisher', naturalTrait: 'speed' },
+  { id: 'blake', name: 'Blake', awareness: 7, basketball: 2, soccer: 3, specialty: 'Defender', naturalTrait: 'strength' },
+  { id: 'diaz', name: 'Diaz', awareness: 6, basketball: 2, soccer: 2, specialty: 'Defender', naturalTrait: 'endurance' },
+  { id: 'okafor', name: 'Okafor', awareness: 7, basketball: 3, soccer: 2, specialty: 'Defender', naturalTrait: 'strength' },
+  { id: 'shaw', name: 'Shaw', awareness: 6, basketball: 1, soccer: 3, specialty: 'Defender', naturalTrait: 'composure', keeper: true },
+  { id: 'mora', name: 'Mora', awareness: 5, basketball: 1, soccer: 3, specialty: 'Defender', naturalTrait: 'endurance' },
+  { id: 'chen', name: 'Chen', awareness: 8, basketball: 1, soccer: 3, specialty: 'Playmaker', naturalTrait: 'composure' },
+  { id: 'santos', name: 'Santos', awareness: 7, basketball: 1, soccer: 3, specialty: 'Playmaker', naturalTrait: 'endurance' },
+  { id: 'adeyemi', name: 'Adeyemi', awareness: 6, basketball: 1, soccer: 3, specialty: 'Finisher', naturalTrait: 'speed' },
+  { id: 'ito', name: 'Ito', awareness: 5, basketball: 1, soccer: 3, specialty: 'Finisher', naturalTrait: 'speed' },
+  { id: 'rowan', name: 'Rowan', awareness: 6, basketball: 2, soccer: 2, specialty: 'Playmaker', naturalTrait: 'endurance' },
 ]
 
 export const PROSPECTS: readonly Profile[] = [
-  { id: 'imani', name: 'Imani', awareness: 8, basketball: 1, soccer: 3, specialty: 'Defender', keeper: true },
-  { id: 'cruz', name: 'Cruz', awareness: 6, basketball: 3, soccer: 2, specialty: 'Finisher' },
-  { id: 'lin', name: 'Lin', awareness: 9, basketball: 2, soccer: 2, specialty: 'Playmaker' },
-  { id: 'foster', name: 'Foster', awareness: 7, basketball: 2, soccer: 3, specialty: 'Defender', keeper: true },
-  { id: 'sato', name: 'Sato', awareness: 8, basketball: 1, soccer: 3, specialty: 'Finisher' },
-  { id: 'miles', name: 'Miles', awareness: 8, basketball: 3, soccer: 1, specialty: 'Playmaker' },
+  { id: 'imani', name: 'Imani', awareness: 8, basketball: 1, soccer: 3, specialty: 'Defender', naturalTrait: 'composure', keeper: true },
+  { id: 'cruz', name: 'Cruz', awareness: 6, basketball: 3, soccer: 2, specialty: 'Finisher', naturalTrait: 'strength' },
+  { id: 'lin', name: 'Lin', awareness: 9, basketball: 2, soccer: 2, specialty: 'Playmaker', naturalTrait: 'composure' },
+  { id: 'foster', name: 'Foster', awareness: 7, basketball: 2, soccer: 3, specialty: 'Defender', naturalTrait: 'endurance', keeper: true },
+  { id: 'sato', name: 'Sato', awareness: 8, basketball: 1, soccer: 3, specialty: 'Finisher', naturalTrait: 'speed' },
+  { id: 'miles', name: 'Miles', awareness: 8, basketball: 3, soccer: 1, specialty: 'Playmaker', naturalTrait: 'endurance' },
 ]
 
 export const ROLES: Record<Sport, readonly string[]> = {
@@ -134,7 +135,13 @@ export interface Club extends SeasonRecord {
   roster: ClubAthlete[]
   lineups: Record<Sport, string[]>
   trainedWeek: number
-  pending: { rules: number; turns: PlanCommand[][]; formations?: (Formation | null)[] } | null
+  pending: {
+    rules: number
+    turns: PlanCommand[][]
+    formations?: (Formation | null)[]
+    opponentPlans?: (PlanCommand[] | null)[]
+    athletics?: Athletics[]
+  } | null
 }
 
 export function profile(id: string): Profile {
@@ -284,7 +291,7 @@ export function unlocked(player: ClubAthlete, sport: Sport, technique: Technique
   if (technique === null) return true
   const ability = TECHNIQUES[technique]
   if (!ability) return false
-  if (ability.trait) return player.athletics[ability.trait] >= 1 && player.xp[sport] >= 3
+  if (ability.trait) return physicalProfile(player)[ability.trait] >= 1 && player.xp[sport] >= 3
   return ability.specialty ? player.xp[sport] >= 6
     && (player.specialty === ability.specialty || player.mastery[ability.specialty] >= MAX_MASTERY)
     : SPORTS.reduce((total, played) => total + player.xp[played], 0) >= 5
@@ -338,7 +345,12 @@ export function baseSkill(entry: Profile, sport: Sport): number {
     : sport === 'football' ? (entry.basketball === 3 || entry.specialty === 'Defender' ? 3 : 2) : entry[sport]
 }
 
-export function ratings(player: ClubAthlete, sport: Sport, slot?: number): AthleteBuild {
+export function physicalProfile(player: ClubAthlete): Athletics {
+  const trait = profile(player.id).naturalTrait
+  return { ...player.athletics, [trait]: player.athletics[trait] + 1 }
+}
+
+export function ratings(player: ClubAthlete, sport: Sport, slot?: number, athletics = physicalProfile(player)): AthleteBuild {
   const entry = profile(player.id)
   const trained = development(player, sport)
   const skill = baseSkill(entry, sport) + trained
@@ -353,7 +365,7 @@ export function ratings(player: ClubAthlete, sport: Sport, slot?: number): Athle
     technique: player.equipped[sport] ?? undefined,
   }
   if (player.signature[sport]) result.signature = player.signature[sport]
-  if (Object.values(player.athletics).some(Boolean)) result.athletics = { ...player.athletics }
+  if (Object.values(athletics).some(Boolean)) result.athletics = { ...athletics }
   if (slot !== undefined) {
     const role = roleName(sport, slot)
     const { rating, level } = roleProgress(sport, role, player.roleStarts[sport][role] ?? 0)
@@ -499,6 +511,12 @@ function migrateClub(data: Record<string, unknown>): unknown {
   }) }
 }
 
+function validPlan(input: unknown): input is PlanCommand[] {
+  return Array.isArray(input) && input.length <= 3
+    && input.every(order => record(order) && typeof order.athlete === 'string' && typeof order.kind === 'string'
+      && (!('target' in order) || typeof order.target === 'string' || typeof order.target === 'number'))
+}
+
 export function readClub(raw: string): Club {
   if (raw.length > 128_000) throw new Error('This file is too large to be a club save.')
   const data: unknown = JSON.parse(raw)
@@ -559,9 +577,14 @@ export function readClub(raw: string): Club {
       || (club.pending.formations !== undefined && (upcoming.sport !== 'football' || !Array.isArray(club.pending.formations)
         || club.pending.formations.length !== club.pending.turns.length
         || club.pending.formations.some(formation => formation !== null && !isFormation(formation))))
-      || club.pending.turns.some(turn => !Array.isArray(turn) || turn.length > 3
-        || turn.some(order => !record(order) || typeof order.athlete !== 'string' || typeof order.kind !== 'string'
-          || ('target' in order && typeof order.target !== 'string' && typeof order.target !== 'number')))) {
+      || (club.pending.opponentPlans !== undefined && (!Array.isArray(club.pending.opponentPlans)
+        || club.pending.opponentPlans.length !== club.pending.turns.length
+        || club.pending.opponentPlans.some(plan => plan !== null && !validPlan(plan))))
+      || (club.pending.athletics !== undefined && (!Array.isArray(club.pending.athletics)
+        || club.pending.athletics.length !== ROLES[upcoming.sport].length
+        || club.pending.athletics.some(traits => !record(traits) || Object.keys(ATHLETIC_TRAITS)
+          .some(trait => !integer(traits[trait as AthleticTrait], 0, MAX_TRAIT + 1)))))
+      || club.pending.turns.some(plan => !validPlan(plan))) {
       throw new Error('The current fixture in this save is invalid.')
     }
   }
