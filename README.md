@@ -23,7 +23,7 @@ Select **Base assignments** during a match to inspect the jobs of teammates with
 
 Download `turn-pro-windows-x64` or `turn-pro-linux-x64` from a passing run for the four-sport prototype. Extract the entire archive, then launch `TurnPro.exe` on Windows or `TurnPro` on Linux. The Linux package uses a tar archive to preserve executable permissions. Use the standalone HTML on other platforms.
 
-Open **How to play** for guided combinations. A standard-mapped controller can move focus with its directional pad or left stick. **Controls** offers button remapping, adjustable text size, and a high-contrast option. Browser saves can move to the desktop version through the club screen’s export and import buttons.
+Start with **Choose a guided drill**. **Find next order** puts focus on the athlete's required order. After the drill, **Play a full match** starts a fresh match with a path into the club. A standard-mapped controller can move focus with its directional pad or left stick. **Controls** offers button remapping, adjustable text size, and a high-contrast option. **Continue saved fixture** reopens the last committed turn. Browser saves can move to the desktop version through the club screen’s export and import buttons.
 
 ## Development
 
@@ -36,4 +36,4 @@ npm run build
 npm run build:launch
 ```
 
-The builds write `dist/turn-pro.html` and `dist/turn-pro-launch.html`. The engine and opponent logic run headlessly under `npm test`. Run `npm run simulate -- 1000` for basketball and `npm run simulate:soccer -- 500` to compare the two soccer budgets on 500 seeds each. Browser CI completes all four quick matches from the same file and checks club saves, controller navigation, and touch controls. Desktop CI plays a snap or turn in every sport and verifies a club fixture survives a full app restart.
+The builds write `dist/turn-pro.html` and `dist/turn-pro-launch.html`. The engine and opponent logic run headlessly under `npm test`. Run `npm run simulate -- 1000` for basketball and `npm run simulate:soccer -- 500` to compare the two soccer budgets on 500 seeds each. Browser CI checks all four quick matches, club saves, and touch controls. It also uses simulated gamepad input to complete the guided drill, a full match, and a club save and resume in both launch sports at 1280×800. Desktop CI checks every sport and verifies a club fixture survives a full app restart.

@@ -241,6 +241,14 @@ const matchScreen = document.getElementById('match-screen')!
 const warning = document.getElementById('save-warning')!
 const prototypeKey = 'turn-pro-club-v1'
 const key = TURN_PRO_FULL_PROTOTYPE ? prototypeKey : 'turn-pro-steam-preview-club-v1'
+const guideKey = `${key}-guide-v1`
+const quickStart = document.getElementById('quick-start')!
+const quickStartTitle = document.getElementById('quick-start-title')!
+const quickStartCopy = document.getElementById('quick-start-copy')!
+const startGuide = document.getElementById('start-guide') as HTMLButtonElement
+const skipGuide = document.getElementById('skip-guide') as HTMLButtonElement
+const resumeQuick = document.getElementById('resume-quick') as HTMLButtonElement
+let guideSeen = false
 let screen: 'quick' | 'club' | 'fixture' = 'quick'
 let route = new AbortController()
 let club: Club | null = null
@@ -291,6 +299,30 @@ function updateClub(next: Club) {
   }
 }
 
+try {
+  guideSeen = localStorage.getItem(guideKey) === 'seen'
+} catch {
+  // The welcome card can still be dismissed for the current session.
+}
+
+function renderQuickStart() {
+  const resume = Boolean(club?.pending)
+  quickStart.hidden = screen !== 'quick' || (!resume && (guideSeen || Boolean(club)))
+  startGuide.hidden = resume
+  skipGuide.hidden = resume
+  resumeQuick.hidden = !resume
+  quickStartTitle.textContent = resume ? 'A club fixture is in progress' : 'Learn your first play'
+  quickStartCopy.textContent = resume ? 'Pick up from your last committed turn.' : 'Follow one guided turn, then try a full match.'
+}
+
+function dismissGuide() {
+  guideSeen = true
+  try { localStorage.setItem(guideKey, 'seen') } catch {
+    // The in-memory setting still applies.
+  }
+  renderQuickStart()
+}
+
 function changeScreen(next: typeof screen) {
   route.abort()
   route = new AbortController()
@@ -301,6 +333,7 @@ function changeScreen(next: typeof screen) {
   document.getElementById('restart')!.hidden = next !== 'quick'
   document.getElementById('quick-defense')!.hidden = next !== 'quick'
   clubNav.textContent = next === 'club' ? 'Quick match' : next === 'fixture' ? 'Back to club' : 'Club season'
+  renderQuickStart()
 }
 
 function basketballDefense(style: DefenseStyle): typeof basketballView {
@@ -336,6 +369,7 @@ function enterFixture() {
   else if (session.sport === 'soccer') mountGame(soccerView, route.signal, { ...session, saveTurn })
   else if (TURN_PRO_FULL_PROTOTYPE && session.sport === 'hockey') mountHockey(route.signal, { ...session, saveTurn })
   else if (TURN_PRO_FULL_PROTOTYPE && session.sport === 'football') mountFootball(route.signal, { ...session, saveTurn })
+  document.querySelector<HTMLButtonElement>('#lineup button[aria-pressed="true"]')?.focus()
 }
 
 function showClub() {
@@ -365,6 +399,7 @@ function showClub() {
       if (!signal.aborted) updateClub(verifyClub(readClub(raw)))
     },
   }, signal, TURN_PRO_FULL_PROTOTYPE)
+  clubScreen.querySelector<HTMLButtonElement>('[data-action="play"], [data-season]')?.focus()
 }
 
 selector.addEventListener('change', () => showQuick(true))
@@ -375,6 +410,15 @@ showQuick(true)
 const learn = document.getElementById('learn-dialog') as HTMLDialogElement
 if (TURN_PRO_FULL_PROTOTYPE) installPlaytest(learn)
 document.getElementById('learn-nav')!.addEventListener('click', () => learn.showModal())
+startGuide.addEventListener('click', () => learn.showModal())
+skipGuide.addEventListener('click', () => {
+  dismissGuide()
+  selector.focus()
+})
+resumeQuick.addEventListener('click', enterFixture)
+document.getElementById('practice-tools')!.addEventListener('click', event => {
+  if ((event.target as Element).closest('button')) dismissGuide()
+})
 learn.addEventListener('click', event => {
   const button = (event.target as Element).closest<HTMLButtonElement>('button[data-learn]')
   if (!button) return
@@ -385,7 +429,6 @@ learn.addEventListener('click', event => {
     selector.value = button.dataset.learn!
     showQuick(true)
     document.querySelector<HTMLButtonElement>('#practice-tools button')?.click()
-    document.querySelector<HTMLButtonElement>('#lineup button[aria-pressed="true"]')?.focus()
   }
 })
 

@@ -93,8 +93,11 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   }, { signal })
   let steps: readonly PracticeStep[] = []
   let coached = false
-  const stepReady = ({ athlete, kind, target }: PracticeStep) =>
-    plan.some(order => order.athlete === athlete && order.kind === kind && order.target === target)
+  let guidedMatch = false
+  let guidedStep: PracticeStep | undefined
+  const matchesStep = (order: C, step: PracticeStep) =>
+    order.athlete === step.athlete && order.kind === step.kind && order.target === step.target
+  const stepReady = (step: PracticeStep) => plan.some(order => matchesStep(order, step))
   const budgetInput = element<HTMLSelectElement>('budget-mode')
   const nextBudget = () => budgetInput.value === '4' ? 4 : 3
   const portrait = matchMedia('(max-width: 560px)')
@@ -237,9 +240,11 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
 
     if ((match.turn > sport.turnLimit)) {
       assignmentToggle.disabled = true
+      checklist.hidden = true
       actions.innerHTML = season
         ? '<p class="instructions">Fixture recorded. Return to the club to see the result and prepare for the next match.</p>'
-        : '<p class="instructions">Review the play-by-play or start a new match.</p>'
+        : guidedMatch ? '<div class="guided-result"><p class="instructions">Match complete. Start a club season to train athletes and play fixtures that count toward the league.</p><button type="button" class="top-action" data-guided-club>Open club season</button></div>'
+          : '<p class="instructions">Review the play-by-play or start a new match.</p>'
       commit.disabled = true
       note.textContent = ''
       return
@@ -270,9 +275,12 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
         </button></li>`
       }).join('')}</ul>`
     checklist.hidden = !steps.length && !coached
-    checklist.innerHTML = coached ? '<p>Practice play resolved. See the play-by-play for the outcome.</p>' : steps.length
-      ? '<ol>' + steps.map(step => '<li>' + (stepReady(step) ? 'Queued · ' : '') + step.label + '</li>').join('') + '</ol>' : ''
-    commit.disabled = steps.some(step => !stepReady(step))
+    const nextStep = steps.find(step => !stepReady(step))
+    checklist.innerHTML = coached
+      ? '<p>Practice play resolved. See the play-by-play for the outcome.</p><button type="button" class="top-action" data-guided-match>Play a full match</button>'
+      : steps.length ? '<ol>' + steps.map(step => '<li>' + (stepReady(step) ? 'Queued · ' : '') + step.label + '</li>').join('') + '</ol>'
+        + (nextStep ? '<button type="button" class="top-action" data-practice-next>Find next order</button>' : '') : ''
+    commit.disabled = Boolean(nextStep)
     note.textContent = commit.disabled ? 'Queue the practice orders to continue.' : plan.length ? 'Both teams reveal after you commit.' : 'No orders queued. Commit to use base assignments.'
   }
 
@@ -295,14 +303,48 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   lineup.addEventListener('click', event => selectAthlete(lineup, event), { signal })
 
   actions.addEventListener('click', event => {
-    const button = (event.target as Element).closest<HTMLButtonElement>('button[data-command]')
+    const target = event.target as Element
+    if (target.closest('[data-guided-club]')) {
+      element('club-nav').click()
+      return
+    }
+    const button = target.closest<HTMLButtonElement>('button[data-command]')
     if (!button) return
     const command = availableCommands()[Number(button.dataset.command)]
     if (!command) return
+    const followedGuide = guidedStep && matchesStep(command, guidedStep)
+    guidedStep = undefined
     plan = [...plan.filter(previous => previous.athlete !== command.athlete), command]
     renderBoard()
     renderPlan()
-    actions.querySelector<HTMLButtonElement>(`[data-command="${button.dataset.command}"]`)?.focus()
+    if (followedGuide) (checklist.querySelector<HTMLButtonElement>('[data-practice-next]') ?? commit).focus()
+    else actions.querySelector<HTMLButtonElement>(`[data-command="${button.dataset.command}"]`)?.focus()
+  }, { signal })
+
+  checklist.addEventListener('click', event => {
+    const target = event.target as Element
+    if (target.closest('[data-guided-match]')) {
+      freshMatch(true)
+      lineup.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus()
+      return
+    }
+    if (!target.closest('[data-practice-next]')) return
+    const step = steps.find(candidate => !stepReady(candidate))
+    if (!step) return
+    const conflicting = plan.length >= sport.limit(match) && !plan.some(order => order.athlete === step.athlete)
+      ? plan.find(order => !steps.some(required => matchesStep(order, required))) : undefined
+    if (conflicting) {
+      orders.querySelector<HTMLButtonElement>(`[data-remove="${conflicting.athlete}"]`)?.focus()
+      note.textContent = 'Remove the focused order to make room for the practice order.'
+      return
+    }
+    selected = step.athlete
+    const index = availableCommands().findIndex(order => matchesStep(order, step))
+    if (index < 0) return
+    guidedStep = step
+    renderBoard()
+    renderPlan()
+    actions.querySelector<HTMLButtonElement>(`[data-command="${index}"]`)?.focus()
   }, { signal })
 
   orders.addEventListener('click', event => {
@@ -339,12 +381,13 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   commit.addEventListener('click', () => {
     if (match.turn > sport.turnLimit || commit.disabled) return
     const turn = match.turn
+    const practicing = steps.length > 0
     const opponent = sport.opponent(match, 1)
     const resolution = sport.resolveTurn(match, [plan, opponent])
     season?.saveTurn(plan, resolution.match, sport.formation?.current(match))
     match = resolution.match
     track?.(turn, match.score, Boolean(steps.length) || match.turn > sport.turnLimit)
-    if (steps.length) {
+    if (practicing) {
       steps = []
       coached = true
       if (TURN_PRO_FULL_PROTOTYPE) track = trackMatch(sport.id, 'quick match')
@@ -353,12 +396,18 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     selected = selectPlayer()
     render()
     recordTurn(turn, resolution.events)
-    if (match.turn > sport.turnLimit) (season ? element<HTMLButtonElement>('club-nav') : restartButton).focus()
+    if (practicing) checklist.querySelector<HTMLButtonElement>('[data-guided-match]')?.focus()
+    if (match.turn > sport.turnLimit) {
+      const next = season ? element<HTMLButtonElement>('club-nav') : actions.querySelector<HTMLButtonElement>('[data-guided-club]') ?? restartButton
+      next.focus()
+    }
   }, { signal })
 
   function restart(next: S, message: string, practiceSteps: readonly PracticeStep[] = []) {
     steps = practiceSteps
     coached = false
+    guidedMatch = false
+    guidedStep = undefined
     match = next
     if (TURN_PRO_FULL_PROTOTYPE) track = trackMatch(sport.id, practiceSteps.length ? 'practice' : 'quick match')
     selected = selectPlayer()
@@ -368,10 +417,14 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     render()
   }
 
+  function freshMatch(fromGuide = false) {
+    restart(sport.create((match.seed + 1) >>> 0, nextBudget()), sport.id === 'hockey'
+      ? 'New match. The Comets start with the puck.' : 'New match. The Comets start with the ball.')
+    guidedMatch = fromGuide
+  }
+
   if (!season) {
-    restartButton.addEventListener('click', () => {
-      restart(sport.create((match.seed + 1) >>> 0, nextBudget()), sport.id === 'hockey' ? 'New match. The Comets start with the puck.' : 'New match. The Comets start with the ball.')
-    }, { signal })
+    restartButton.addEventListener('click', () => freshMatch(), { signal })
   }
 
   practice.replaceChildren()
@@ -380,7 +433,10 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
       const button = document.createElement('button')
       button.type = 'button'
       button.textContent = drill.name
-      button.addEventListener('click', () => restart(drill.create(nextBudget()), drill.intro, drill.steps), { signal })
+      button.addEventListener('click', () => {
+        restart(drill.create(nextBudget()), drill.intro, drill.steps)
+        checklist.querySelector<HTMLButtonElement>('[data-practice-next]')?.focus()
+      }, { signal })
       practice.append(button)
     }
   }

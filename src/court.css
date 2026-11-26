@@ -189,6 +189,12 @@ h2 { font-size: 1rem; font-weight: 780; letter-spacing: .016em; }
   background: #19282b; color: #f5f5e9; border: 1px solid var(--line); border-radius: 4px;
   min-height: 38px; padding: 4px 8px; font: inherit;
 }
+.quick-start {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 15px; margin-bottom: 12px; background: var(--panel); border: 1px solid var(--line);
+}
+.quick-start p { margin-top: 4px; color: var(--muted); font-size: .85rem; }
+.quick-start .club-actions { margin: 0; }
 .save-warning { max-width: 1200px; padding: 6px 24px; margin: 6px auto 0; color: var(--away); }
 .club-hero, .club-panel { border: 1px solid var(--line); background: #17272b; padding: 16px; min-width: 0; }
 .club-hero { border-top: 2px solid var(--home); }
@@ -268,6 +274,8 @@ body.controller-active :focus { outline: 3px solid var(--lime); outline-offset: 
 .practice-checklist { padding: 8px 15px; color: var(--lime); font-size: .83rem; border-bottom: 1px solid var(--line); }
 .practice-checklist ol { margin: 0; padding-left: 16px; }
 .practice-checklist li + li { margin-top: 4px; }
+.practice-checklist button, .guided-result button { margin-top: 8px; }
+.guided-result { padding-top: 4px; }
 .formation-panel { padding: 8px 15px; border-bottom: 1px solid var(--line); font-size: .83rem; }
 .formation-panel select {
   color: inherit; background: #18252a; border: 1px solid var(--line); font: inherit; min-height: 34px; margin-left: 8px;

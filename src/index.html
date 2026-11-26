@@ -25,6 +25,17 @@
   <p id="save-warning" class="save-warning" role="status" hidden></p>
   <main id="club-screen" hidden></main>
   <main id="match-screen">
+    <section id="quick-start" class="quick-start" aria-labelledby="quick-start-title" hidden>
+      <div>
+        <h2 id="quick-start-title">Learn your first play</h2>
+        <p id="quick-start-copy">Follow one guided turn, then try a full match.</p>
+      </div>
+      <div class="club-actions">
+        <button type="button" id="start-guide" class="primary" data-controller-start>Choose a guided drill</button>
+        <button type="button" id="skip-guide">Skip for now</button>
+        <button type="button" id="resume-quick" class="primary" data-controller-start hidden>Continue saved fixture</button>
+      </div>
+    </section>
     <div id="quick-defense" class="quick-defense">
       <label for="defense">Opponent defense</label>
       <select id="defense" aria-label="Opponent defense"></select>
@@ -84,7 +95,7 @@
     <p>Pick an athlete and queue an order. Give different athletes up to three orders, then commit. Both sides reveal their plans at once.</p>
     <p>Unassigned teammates follow their roles and recover stamina. The play-by-play shows how movement, coverage, and chance shaped the result.</p>
     <div class="dialog-actions">
-      <button type="button" data-learn="basketball">Practice a basketball combination</button>
+      <button type="button" data-learn="basketball" autofocus>Practice a basketball combination</button>
       <button type="button" data-learn="soccer">Practice a soccer through ball</button>
       <!-- prototype-drills -->
       <button type="button" data-learn="club">Open the club</button>

@@ -51,6 +51,10 @@ function focus(element: HTMLElement | undefined) {
   element?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 }
 
+function initialFocus(items = focusable()) {
+  focus(items.find(element => element.hasAttribute('data-controller-start')) ?? items[0])
+}
+
 function point(element: HTMLElement) {
   const rect = element.getBoundingClientRect()
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
@@ -61,12 +65,21 @@ function move(direction: Direction) {
   const active = document.activeElement as HTMLElement
   const index = items.indexOf(active)
   if (index < 0) {
-    focus(items[0])
+    initialFocus(items)
     return
   }
   const origin = point(active)
   const horizontal = direction === 'left' || direction === 'right'
   const sign = direction === 'right' || direction === 'down' ? 1 : -1
+  const row = horizontal ? active.closest('[data-controller-row]') : null
+  if (row) {
+    const choices = items.filter(element => row.contains(element))
+    const neighbor = choices[choices.indexOf(active) + sign]
+    if (neighbor) {
+      focus(neighbor)
+      return
+    }
+  }
   const target = items.map(element => {
     const candidate = point(element)
     const ahead = (horizontal ? candidate.x - origin.x : candidate.y - origin.y) * sign
@@ -176,7 +189,7 @@ export function installGamepad() {
           focus(nearest)
         }
       } else {
-        focus(focusable()[0])
+        initialFocus()
       }
     } else if (action === 'back') {
       if (select) stopSelect(false)
@@ -208,6 +221,7 @@ export function installGamepad() {
     requestAnimationFrame(poll)
     const pad = pads.find(player => player?.connected && player.mapping === 'standard')
     if (!pad || document.hidden || !document.hasFocus()) {
+      stopSelect(false)
       connected = undefined
       previousDirection = undefined
       return

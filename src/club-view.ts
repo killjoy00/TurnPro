@@ -43,7 +43,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       container.innerHTML = `<section class="club-hero">
         <h2>Comets club</h2>
         <p>${club ? 'Choose a schedule for the next season with your existing club.' : 'Choose a schedule for your solo season.'}</p>
-        <div class="club-actions">
+        <div class="club-actions" data-controller-row>
           ${fullPrototype ? '<button class="primary" data-season="all">All four sports · 12 fixtures</button>' : ''}
           <button data-season="both">${fullPrototype ? 'Basketball &amp; soccer' : 'Both sports'} · 6 fixtures</button>
           <button data-season="basketball">Basketball · 4 fixtures</button>
@@ -256,6 +256,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
             : `${name} earned 3 ${SPORT[focus]} XP.`
     }
     render()
+    if (data.season) container.querySelector<HTMLButtonElement>('[data-action="play"]')?.focus()
     if (data.athlete || data.lineup) container.querySelector<HTMLButtonElement>('[aria-pressed="true"]' +
       (data.athlete ? `[data-athlete="${athlete}"]` : `[data-lineup="${lineupSport}"]`))?.focus()
   }, { signal })
