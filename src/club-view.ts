@@ -109,19 +109,20 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       const known = player.learned[sport]
       const options = known.map(key => `<option value="${key}" ${equipped === key ? 'selected' : ''}>
         ${SIGNATURES[key].label} · ${SIGNATURES[key].slot}</option>`).join('')
-      const lessons = (Object.entries(SIGNATURES) as [Signature, typeof SIGNATURES[Signature]][])
-        .filter(([key]) => !known.includes(key)).map(([key, ability]) => {
-          const ready = canTrain && allowedSports.includes(sport) && canLearnSignature(player, sport, key)
-          return `<div class="signature-lesson"><small><b>${ability.label}</b> · ${ability.slot} · ${ability.specialty} · ${SIGNATURE_XP} XP
-            <span>${ability.detail}</span></small>
-            ${ready ? `<button type="button" data-learn-signature="${key}" data-sport="${sport}">Learn ${ability.label.toLowerCase()} for ${SPORT[sport]}</button>` : ''}</div>`
-        }).join('')
+      const courses = (Object.keys(SIGNATURES) as Signature[]).filter(key => !known.includes(key))
+      const available = courses.filter(key => canTrain && allowedSports.includes(sport) && canLearnSignature(player, sport, key))
+      const lessons = courses.map(key => {
+        const ability = SIGNATURES[key]
+        return `<div class="signature-lesson"><small><b>${ability.label}</b> · ${ability.slot} · ${ability.specialty} · ${SIGNATURE_XP} XP
+          <span>${ability.detail}</span></small>
+          ${available.includes(key) ? `<button type="button" class="top-action" data-learn-signature="${key}" data-sport="${sport}">Learn ${ability.label.toLowerCase()} for ${SPORT[sport]}</button>` : ''}</div>`
+      }).join('')
       return `<div class="signature-options">
         <label class="lineup-choice">Signature <select data-signature="${sport}" aria-label="${SPORT[sport]} signature for ${info.name}" ${editable && known.length ? '' : 'disabled'}>
           <option value="">No signature equipped</option>${options}
         </select></label>
         ${equipped ? `<small>${SIGNATURES[equipped].detail}</small>` : ''}
-        ${lessons}
+        ${lessons ? `<details ${available.length ? 'open' : ''}><summary>Learn signatures</summary>${lessons}</details>` : ''}
       </div>`
     }
     const stats = SPORTS.map(sport => {
@@ -220,7 +221,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         <label class="lineup-choice">Specialty <select data-specialty aria-label="Specialty for ${info.name}" ${editable ? '' : 'disabled'}>
           ${Object.keys(SPECIALTIES).map(key => `<option ${key === player.specialty ? 'selected' : ''}>${key}</option>`).join('')}</select></label>
         <p class="muted">${SPECIALTIES[player.specialty]}</p>
-        <p class="muted">Learning a signature uses the weekly training session. Keep learned signatures when you change specialty. Basketball and soccer each have one signature slot alongside the passive slot.</p>
+        <p class="muted">Learning a signature uses the weekly training session. You keep it after changing specialty.</p>
         <ul class="sport-stats">${stats}</ul>
         ${editable ? `<p class="muted">${canTrain ? 'One training session available this week.' : 'Training used this week.'}</p>
         <div class="club-actions">${allowedSports.map(sport => `<button data-train="${sport}" ${canTrain ? '' : 'disabled'}>Train ${SPORT[sport]}</button>`).join('')}

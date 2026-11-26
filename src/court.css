@@ -224,6 +224,7 @@ h2 { font-size: 1rem; font-weight: 780; letter-spacing: .016em; }
 .sport-stats li { border-bottom: 1px solid var(--line); padding: 5px 0; font-size: .86rem; }
 .sport-stats small { display: block; }
 .signature-options { margin-block: .4rem; }
+.signature-options summary { cursor: pointer; }
 .signature-lesson { padding-block: .375rem; }
 .signature-lesson span { display: block; }
 .signature-lesson button { margin-top: .25rem; }
