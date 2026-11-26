@@ -8,7 +8,7 @@ Try the first coached play without hints beyond the game. Rotate the starting sp
 
 | Activity | What to play | What to capture |
 | --- | --- | --- |
-| Basketball | Practice a kick-out, then play a quick match. | Can you tell which player to screen for and why the shooter got open? |
+| Basketball | Practice a kick-out, then play a quick match. | Watch the revealed plans, screen, ball flight, and result. Can you explain why the shooter got open? Try **Skip playback** during another turn and check that you can identify the outcome in the log. |
 | Soccer | Beat the press or practice a cross, then play a quick match. | Can you tell how the receiver's run changes the pass, and why a pass went through or got intercepted? |
 | Ice hockey | Practice a screened one-timer, then play a quick match. | Try the one-timer preview before and after queuing the screen. Explain what the screen adds and when to change lines. |
 | American football | Practice third and five, then play a quick match. | Compare the queued pass with and without protection. Explain a fourth-down choice. |

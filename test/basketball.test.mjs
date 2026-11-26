@@ -32,8 +32,11 @@ test('an off-ball screen enables a drive and both plans turn into one event log'
   const defense = [command(match, '1-0', 'mark', '0-0')]
   const { match: next, events } = resolveTurn(match, [[drive, screen], defense])
   assert.deepEqual(events.slice(0, 2).map(event => event.kind), ['plan', 'plan'])
-  assert.match(events[2].text, /Okafor screens Quinn/)
-  assert.match(events[3].text, /Reed drives/)
+  const contact = events.findIndex(event => event.cue?.type === 'contact')
+  const run = events.findIndex(event => /Reed drives/.test(event.text))
+  assert.ok(contact > 1 && run > contact)
+  assert.match(events[contact].text, /Okafor screens Quinn/)
+  assert.deepEqual(events[contact].cue, { type: 'contact', athlete: '0-4', opponent: '1-0' })
   const initialPosition = athleteById(match, '0-0').position
   const withScreen = distance(initialPosition, athleteById(next, '0-0').position)
   const withoutScreen = resolveTurn(match, [[drive], defense]).match
@@ -51,10 +54,9 @@ test('cuts change the receiving position before passes resolve', () => {
   const pass = command(match, '0-0', 'pass', '0-1')
   const cut = command(match, '0-1', 'cut', 0)
   const { match: next, events } = resolveTurn(match, [[pass, cut], []])
-  const move = events.findIndex(event => event.kind === 'movement')
+  const move = events.findIndex(event => /Vale cuts/.test(event.text))
   const ball = events.findIndex(event => event.kind === 'ball' || event.kind === 'turnover')
-  assert.match(events[move].text, /Vale cuts/)
-  assert.ok(move < ball)
+  assert.ok(move >= 0 && move < ball)
   assert.ok(events.some(event => /completion/.test(event.text)))
   assert.equal(next.turn, 2)
 })
@@ -92,6 +94,23 @@ test('serialized seeded matches replay identically through the final turn', () =
       const resolution = resolveTurn(match, plans)
       const fromSerialization = resolveTurn(replay, structuredClone(plans))
       assert.deepEqual(resolution, fromSerialization)
+      const positions = new Map(match.athletes.map(athlete => [athlete.id, athlete.position]))
+      let holder = match.holder
+      for (const { cue } of resolution.events) {
+        if (cue?.type === 'move' || cue?.type === 'reset') {
+          for (const { athlete, from, to } of cue.moves) {
+            assert.deepEqual(from, positions.get(athlete))
+            positions.set(athlete, to)
+          }
+        }
+        if (cue?.type === 'reset') holder = cue.holder
+        if (cue?.type === 'ball' && cue.holder) {
+          holder = cue.holder
+          assert.deepEqual(cue.to, positions.get(holder))
+        }
+      }
+      assert.deepEqual(resolution.match.athletes.map(athlete => athlete.position), [...positions.values()])
+      assert.equal(holder, resolution.match.holder)
       assert.equal(resolution.events.some(event => event.kind === 'finish'), turn === TURN_LIMIT)
       match = resolution.match
       replay = JSON.parse(JSON.stringify(fromSerialization.match))

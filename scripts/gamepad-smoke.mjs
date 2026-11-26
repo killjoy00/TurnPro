@@ -3,7 +3,7 @@ import { chromium } from 'playwright'
 
 const browser = await chromium.launch()
 try {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+  const page = await browser.newPage({ reducedMotion: 'reduce', viewport: { width: 1280, height: 800 } })
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(() => {
@@ -72,6 +72,14 @@ try {
   const first = await page.evaluate(() => document.activeElement.textContent.trim())
   await press(13)
   assert.notEqual(await page.evaluate(() => document.activeElement.textContent.trim()), first)
+  await page.getByRole('button', { name: 'Quick match' }).click()
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await press(3)
+  assert.equal(await page.locator('#skip-playback:focus').count(), 1)
+  await press(3)
+  assert.match(await page.locator('.turn-clock').innerText(), /Turn 2/i)
+  assert.equal(await page.locator('#commit:focus').count(), 1)
+  assert.equal(await page.locator('.timeline').count(), 1)
   assert.deepEqual(errors, [])
   console.log('Controller navigation, button remapping, order selection, and turn commitment passed.')
 } finally {

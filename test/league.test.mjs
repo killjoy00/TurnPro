@@ -30,7 +30,7 @@ test('regular fixtures advance all four clubs and retain the other match’s res
   assert.equal(table.find(row => row.team === 'Forge').losses, 1)
 })
 
-test('mixed finals use match points across both sports and award a tied series to the higher seed', () => {
+test('mixed finals combine basketball and soccer match points and award a tied series to the higher seed', () => {
   const club = reachedFinal('both')
   const fixtures = seasonSchedule(club, club.season)
   assert.deepEqual(fixtures.slice(6).map(fixture => fixture.sport), ['basketball', 'soccer'])

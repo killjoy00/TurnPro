@@ -4,6 +4,7 @@ import { constants } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
+import { SPORTS } from '../src/league.ts'
 
 function integerId(value, flag) {
   if (typeof value !== 'string' || !/^[1-9][0-9]{0,9}$/.test(value) || Number(value) > 0xffffffff) {
@@ -19,7 +20,7 @@ function vdfPath(value) {
 }
 
 export async function writeSteamPreview({
-  appId, windowsDepot, linuxDepot, packages = 'release/launch', output = 'release/steam-preview',
+  appId, windowsDepot, linuxDepot, packages = 'release', output = 'release/steam-preview',
 }) {
   const app = integerId(appId, 'app-id')
   const windows = integerId(windowsDepot, 'windows-depot')
@@ -39,9 +40,9 @@ export async function writeSteamPreview({
     }
     const manifest = await readFile(join(target.root, 'turn-pro-build.json'), 'utf8')
       .then(JSON.parse).catch(() => null)
-    if (manifest?.edition !== 'launch' || manifest.platform !== target.platform || manifest.arch !== 'x64'
+    if (!Array.isArray(manifest?.sports) || manifest.sports.join() !== SPORTS.join() || manifest.platform !== target.platform || manifest.arch !== 'x64'
       || typeof manifest.version !== 'string' || !manifest.version || !/^[a-f0-9]{64}$/.test(manifest.gameSha256)) {
-      throw new Error(`Use a 64-bit launch package for ${target.platform}.`)
+      throw new Error(`Use a 64-bit four-sport package for ${target.platform}.`)
     }
     const payload = await readFile(join(target.root, 'resources/app.asar'))
     if (manifest.payloadSha256 !== createHash('sha256').update(payload).digest('hex')) {
@@ -76,7 +77,7 @@ export async function writeSteamPreview({
   await writeFile(appBuild, `"AppBuild"
 {
   "AppID" "${app}"
-  "Desc" "Turn Pro launch candidate preview"
+  "Desc" "Turn Pro four-sport preview"
   "BuildOutput" "${logFolder}"
   "Preview" "1"
   "Depots"

@@ -7,7 +7,35 @@ const browser = await chromium.launch()
 const game = new URL('../dist/turn-pro.html', import.meta.url).href
 
 try {
-  const page = await browser.newPage({ viewport: { width: 1360, height: 950 } })
+  const playback = await browser.newPage({ reducedMotion: 'no-preference', viewport: { width: 1280, height: 800 } })
+  const playbackErrors = []
+  playback.on('pageerror', error => playbackErrors.push(error.message))
+  await playback.goto(game)
+  const skip = playback.getByRole('button', { name: 'Skip playback' })
+  await playback.getByRole('button', { name: 'Shoot', exact: false }).first().click()
+  await playback.getByRole('button', { name: 'Commit turn' }).click()
+  await skip.waitFor()
+  assert.match(await playback.locator('#summary').innerText(), /Comets:.*Forge:/)
+  await playback.waitForFunction(() => document.querySelector('.resolved-ball')?.getAnimations().some(animation =>
+    animation.effect.getKeyframes()[0].left))
+  assert.match(await playback.locator('.turn-clock').innerText(), /Turn 1/i)
+  await playback.waitForFunction(() => document.querySelector('.turn-clock').textContent.includes('Turn 2'))
+  assert.match(await playback.locator('.timeline').first().innerText(), /scores|misses/)
+  await playback.getByRole('button', { name: 'Commit turn' }).click()
+  await skip.click()
+  await playback.waitForFunction(() => document.querySelector('.turn-clock').textContent.includes('Turn 3'))
+  assert.equal(await playback.locator('.resolved-ball').count(), 0)
+  assert.equal(await playback.locator('.timeline').count(), 2)
+  await playback.getByRole('button', { name: 'Commit turn' }).click()
+  await skip.waitFor()
+  await playback.locator('#sport').selectOption('hockey')
+  assert.match(await playback.locator('.turn-clock').innerText(), /Turn 1 \/ 18/i)
+  assert.equal(await playback.locator('.resolved-ball').count(), 0)
+  assert.equal(await playback.locator('.timeline').count(), 0)
+  assert.deepEqual(playbackErrors, [])
+  await playback.close()
+
+  const page = await browser.newPage({ reducedMotion: 'reduce', viewport: { width: 1360, height: 950 } })
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
   await page.goto(game)
@@ -164,7 +192,7 @@ try {
   await page.getByRole('button', { name: 'Basketball · 4 fixtures' }).click()
   assert.match(await page.locator('.club-hero').innerText(), /Season 2/)
   await page.getByText('Past seasons', { exact: true }).click()
-  assert.match(await page.locator('.past-seasons').innerText(), /Season 1 · Both sports/)
+  assert.match(await page.locator('.past-seasons').innerText(), /Season 1 · Basketball & soccer/)
   await page.getByRole('combobox', { name: 'Basketball ability for Reed' }).selectOption('thread-pass')
   await page.getByRole('combobox', { name: 'Soccer ability for Reed' }).selectOption('second-wind')
   await page.getByRole('button', { name: 'Play fixture' }).click()
@@ -247,7 +275,7 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Commit turn' }).isEnabled(), true)
   assert.deepEqual(errors, [])
 
-  const career = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+  const career = await browser.newPage({ reducedMotion: 'reduce', viewport: { width: 1280, height: 900 } })
   career.on('pageerror', error => errors.push(error.message))
   await career.goto(game)
   await career.evaluate(() => localStorage.removeItem('turn-pro-club-v1'))
@@ -296,6 +324,7 @@ try {
   assert.deepEqual(errors, [])
 
   const mobile = await browser.newPage({
+    reducedMotion: 'reduce',
     viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true,
   })
   await mobile.goto(game)

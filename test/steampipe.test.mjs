@@ -20,7 +20,7 @@ test('SteamPipe preparation maps each complete desktop package and always sets p
       await writeFile(join(target, executable), 'test executable', { mode: 0o755 })
       await writeFile(join(target, 'resources/app.asar'), 'test payload')
       await writeFile(join(target, 'turn-pro-build.json'), JSON.stringify({
-        edition: 'launch', platform: dir.includes('win32') ? 'win32' : 'linux', arch: 'x64', version: '0.1.0',
+        sports: ['basketball', 'soccer', 'hockey', 'football'], platform: dir.includes('win32') ? 'win32' : 'linux', arch: 'x64', version: '0.1.0',
         gameSha256: createHash('sha256').update('test game').digest('hex'),
         payloadSha256: createHash('sha256').update('test payload').digest('hex'),
       }))
@@ -39,6 +39,8 @@ test('SteamPipe preparation maps each complete desktop package and always sets p
     }
     const linuxManifestPath = join(args.packages, 'TurnPro-linux-x64/turn-pro-build.json')
     const linuxManifest = JSON.parse(await readFile(linuxManifestPath, 'utf8'))
+    await writeFile(linuxManifestPath, JSON.stringify({ ...linuxManifest, sports: ['basketball', 'soccer'] }))
+    await assert.rejects(() => writeSteamPreview(args), /four-sport package/)
     await writeFile(linuxManifestPath, JSON.stringify({ ...linuxManifest, gameSha256: '0'.repeat(64) }))
     await assert.rejects(() => writeSteamPreview(args), /from the same build/)
     await writeFile(linuxManifestPath, JSON.stringify(linuxManifest))

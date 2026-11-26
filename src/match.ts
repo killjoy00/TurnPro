@@ -65,9 +65,24 @@ export type EventKind =
   | 'plan' | 'movement' | 'ball' | 'score' | 'possession' | 'turnover'
   | 'save' | 'restart' | 'finish'
 
-export type TurnEvent =
+export interface ResolvedMove {
+  athlete: string
+  from: Point
+  to: Point
+}
+
+export type PlayCue =
+  | { type: 'plan'; team: Team; commands: readonly PlanCommand[] }
+  | { type: 'move'; moves: readonly ResolvedMove[] }
+  | { type: 'contact'; athlete: string; opponent: string }
+  | { type: 'ball'; action: 'pass' | 'shot' | 'interception' | 'rebound' | 'strip';
+      from: Point; to: Point; holder?: string }
+  | { type: 'reset'; moves: readonly ResolvedMove[]; holder: string }
+
+export type TurnEvent = { cue?: PlayCue } & (
   | { kind: EventKind; text: string }
   | { kind: 'rebound'; text: string; offensive: boolean }
+)
 
 export function otherTeam(team: Team): Team {
   return team === 0 ? 1 : 0
@@ -109,7 +124,7 @@ export function revealPlans<S extends MatchSnapshot, C extends PlanCommand>(
   return ([0, 1] as const).map(team => {
     const descriptions = plans[team].map(command =>
       `${findAthlete(match.athletes, command.athlete).name} · ${label(match, command)}`)
-    return { kind: 'plan', text: `${teamNames(match)[team]}: ${descriptions.join(' / ') || 'Base assignments'}` }
+    return { kind: 'plan', cue: { type: 'plan', team, commands: plans[team].map(command => ({ ...command })) }, text: `${teamNames(match)[team]}: ${descriptions.join(' / ') || 'Base assignments'}` }
   })
 }
 

@@ -5,8 +5,7 @@ import { join, resolve } from 'node:path'
 import { _electron as electron } from 'playwright'
 
 const profile = await mkdtemp(join(tmpdir(), 'turn-pro-profile-'))
-const launch = process.argv.includes('--launch')
-const executablePath = resolve(launch ? 'release/launch' : 'release', `TurnPro-${process.platform}-x64`,
+const executablePath = resolve('release', `TurnPro-${process.platform}-x64`,
   process.platform === 'win32' ? 'TurnPro.exe' : 'TurnPro')
 const args = [`--user-data-dir=${profile}`]
 let app
@@ -14,8 +13,9 @@ try {
   app = await electron.launch({ executablePath, args })
   let page = await app.firstWindow()
   await page.waitForURL('turnpro://game/index.html')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   const sports = page.locator('#sport option')
-  const expected = launch ? ['basketball', 'soccer'] : ['basketball', 'soccer', 'hockey', 'football']
+  const expected = ['basketball', 'soccer', 'hockey', 'football']
   assert.deepEqual(await sports.evaluateAll(options => options.map(option => option.value)),
     expected)
   assert.equal(await page.evaluate(() => typeof globalThis.require), 'undefined')
@@ -27,7 +27,7 @@ try {
     assert.match(await page.locator('.turn-clock').innerText(), new RegExp(`${unit} 2`, 'i'))
   }
   await page.getByRole('button', { name: 'Club season' }).click()
-  await page.getByRole('button', { name: launch ? 'Both sports · 6 fixtures' : 'All four sports · 12 fixtures' }).click()
+  await page.getByRole('button', { name: 'All four sports · 12 fixtures' }).click()
   await page.getByRole('button', { name: 'Play fixture' }).click()
   await page.getByRole('button', { name: 'Commit turn' }).click()
   assert.match(await page.locator('.turn-clock').innerText(), /Turn 2/i)
