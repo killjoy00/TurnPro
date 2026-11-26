@@ -18,7 +18,7 @@ export const SIGNATURES = {
     label: 'Jump the lane',
     specialty: 'Defender',
     slot: 'Reaction',
-    detail: 'Leave this athlete unassigned. They can step into a nearby passing lane for 8 stamina, giving up recovery. Lofted crosses bypass the reaction.',
+    detail: 'Leave this athlete unassigned. They can step into a nearby passing lane for 8 stamina, giving up recovery. Lofted crosses and switches bypass the reaction.',
   },
 } as const
 

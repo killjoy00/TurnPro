@@ -47,7 +47,7 @@ Resolution uses phases within one jointly planned turn. A screen can be set befo
 
 ## Athlete and club progression
 
-An athlete has an identity, physical profile, tendencies, strengths, fatigue, and development potential. Universal attributes such as speed, strength, endurance, awareness, and composure carry across sports. Technical skills, role proficiency, and experience are tracked for each sport. A fast athlete starting soccer can get to the ball quickly and still need to learn finishing and first touch.
+An athlete has an identity, physical profile, tendencies, strengths, fatigue, and development potential. Universal attributes such as speed, strength, endurance, awareness, and composure carry across sports. Technical skills, role proficiency, and experience are tracked for each sport. Each club athlete and prospect has a natural point in speed, strength, endurance, or composure. It applies across sports and positions alongside the athlete’s trained points. Vale brings speed to a soccer run or a football route, while Okafor’s strength helps with rebounds and contact on the ice.
 
 Specialties establish each athlete's tradeoffs. Playmakers favor passing, Defenders favor pressure, and Finishers favor scoring. A fixture appearance earns one mastery point in the active specialty, or two if the athlete took at least three orders. General sport training earns three sport XP and one mastery point. Mastery travels across sports and stays with the athlete when they change specialties.
 
@@ -57,11 +57,11 @@ At three mastery, an athlete with three XP in basketball or soccer can spend one
 | --- | --- | --- |
 | One-touch relay | Learn as a Playmaker. Order the off-ball athlete to relay to a third teammate. A first pass triggers the relay, and a receiving Finisher can add a same-turn shot. | Each pass can fail. The relay takes an order and stamina, and only one relay can trigger per turn. |
 | Cut and finish | Learn as a Finisher. Queue the athlete's off-ball cut and order a teammate's pass. A reception in shooting range triggers a shot on the same turn. | Costs more stamina than a standard run or cut. The combination needs a second order and a completed pass. |
-| Jump the lane | Learn as a Defender. Leave the athlete unassigned near a likely passing lane so they can step into it after the pass is committed. | The reaction spends eight stamina and replaces recovery. A lofted soccer cross bypasses it. |
+| Jump the lane | Learn as a Defender. Leave the athlete unassigned near a likely passing lane so they can step into it after the pass is committed. | The reaction spends eight stamina and replaces recovery. Lofted soccer crosses and switches bypass it. |
 
 Technical drills unlock at three XP in each sport. Use a weekly session to earn one XP and improve one passing, finishing, or defensive skill by one point, up to two extra points per skill. A point in basketball shooting improves shot attempts there. Football runs and catches develop independently even when the same athlete starts in both sports.
 
-The shared training choices include speed for movement and routes, strength for contact, endurance for unassigned recovery, and composure for accuracy under fatigue. Spend a weekly session to raise one attribute by one point, up to two points in each. Quick step extends ordered movement at 50 stamina or higher, and Anchor improves contact. Each unlock requires one point in its matching attribute and three XP in the sport. Both use the sport's passive slot.
+The shared training choices include speed for movement and routes, strength for contact, endurance for unassigned recovery, and composure for accuracy under fatigue. Spend a weekly session to raise one attribute by one point, up to two points in each. Quick step extends ordered movement at 50 stamina or higher, and Anchor improves contact. Each unlock requires one natural or trained point in its matching attribute and three XP in the sport. Both use the sport's passive slot.
 
 Role proficiency tracks where an athlete actually plays. Three appearances in a role earn +1 to its associated rating, and six earn +2. A basketball point guard improves passing, a hockey goalie improves keeping, and football retains proficiency for each paired role. A reserve skater earns proficiency after taking the ice. Lineup choices show any bonus for that position.
 
@@ -71,7 +71,7 @@ The career grows from a modest roster through recruitment, training, lineups, re
 
 Solo quick matches should aim for 5–10 minutes, standard competitive matches for 10–15 minutes, and live competitive planning windows for 15–25 seconds. These are playtest targets. Compressed halves, quarters, or periods and adjustable playback speed support different session lengths.
 
-Career allows full progression. A future Club League can put persistent rosters under equivalent budgets or divisions. Ranked play should standardize power and give players the same roster-building budget. Online play follows a viable solo game. A future server owns game state and resolution, validates legal commands against the current rules version, reveals plans after both lock, and supports recovery from timeout or disconnect. Replay inputs include the initial state, rule version, seed, and both committed plans. Casual and private matches, asynchronous play, leagues, spectating, and tournaments can follow in sequence.
+Career allows full progression. A future Club League can put persistent rosters under equivalent budgets or divisions. Ranked play should standardize power and give players the same roster-building budget. Online play follows a viable solo game. A future server owns game state and resolution, validates legal commands against the current rules version, reveals plans after both lock, and supports recovery from timeout or disconnect. Replay inputs include the initial state, rule version, seed, and both committed plans. New club turns record both sides’ orders. A fixture also stores its starting athletic ratings so the new natural strengths do not change earlier fixtures. Casual and private matches, asynchronous play, leagues, spectating, and tournaments can follow in sequence.
 
 ## Basketball prototype
 
@@ -172,6 +172,17 @@ Use CI to compile, run tests, and produce a downloadable browser build. Start wi
 Steam and Steam Deck remain the first commercial targets. The [Steam packaging preview](STEAM-PREVIEW.md) uses the same four-sport Windows and Linux packages as the playtest. Physical Steam Deck testing and Steamworks review belong to the commercial release stage.
 
 Turn Pro is planned as a premium game. Additional sports, campaigns, and cosmetics are possible later. Commercial decisions should protect the core play loop and the fairness of competitive modes.
+
+## Tactical decisions to playtest
+
+The new drills are available in the practice panel for each sport. They teach when to use the tactic and what the defense can do about it.
+
+| Sport | Decision in Turn Pro | References |
+| --- | --- | --- |
+| Soccer | Lure the press toward the ball, show wide with the far-side receiver, then switch play. The lofted ball clears central traffic, while far-side defenders and offside can still stop it. | [FIFA Training Centre](https://www.fifatrainingcentre.com/en/game/game-analysis/in-possession/switch-of-play.php) · [Football, Tactics & Glory](https://creoteam.com/football-tactics-glory/) |
+| Ice hockey | Show at the boards and bank an outlet around a forechecker. The longer route comes with a cost, and opponents can read the bounce lane and intercept it. | [Hockey Canada coaching plan](https://cdn-ca.aglty.io/bc-hockey/image-gallery/coach-page/NCCP_IS%20Developing%20Defencemen%201_On%20Ice%20Plan_2023%20EN.pdf) · [EA NHL coaching strategies guide](https://nhlguides.net/coaching-strategies/) |
+| Basketball | Pick and roll with a screener who can catch near the rim. A switching defender can pick up the ball handler while the first defender covers the roller. | [FIBA coaching manual, p. 238](https://assets.fiba.basketball/image/upload/documents-corporate-wabc-coaching-manual-level-2-eng.pdf) · [NBA 2K26 pick-and-roll guide](https://www.magicgameworld.com/nba-2k26-how-to-pick-and-roll-for-easy-points-mycareer-online-tips/) |
+| American football | Use play-action against a defense filling run gaps. The slower fake puts more pressure on the protection, and deeper coverage stays in position to contest the throw. | [NFL play-action teaching drill](https://static.www.nfl.com/image/upload/league/zx8d2rasyewxuusbhzae.pdf) · [Madden NFL 26 gameplay breakdown](https://www.ea.com/games/madden-nfl/madden-nfl-26/news/madden-26-gridiron-notes-gameplay-deep-dive) |
 
 ## Design references
 

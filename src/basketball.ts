@@ -34,7 +34,7 @@ export interface Match extends MatchSnapshot {
 }
 
 export type Command =
-  | { athlete: string; kind: 'drive' | 'finish' | 'shoot' | 'catch-shoot' | 'screen' | 'protect' | 'switch' | 'help' | 'stay' }
+  | { athlete: string; kind: 'drive' | 'finish' | 'shoot' | 'catch-shoot' | 'screen' | 'roll-screen' | 'protect' | 'switch' | 'help' | 'stay' }
   | { athlete: string; kind: 'pass'; target: string }
   | { athlete: string; kind: 'relay'; target: string }
   | { athlete: string; kind: 'kickout'; target: string }
@@ -53,6 +53,7 @@ export const ACTIONS = {
   cut: { label: 'Cut', stamina: 10 },
   'cut-and-finish': { label: 'Cut and finish', stamina: 18 },
   screen: { label: 'Set screen', stamina: 8 },
+  'roll-screen': { label: 'Screen and roll', stamina: 17 },
   mark: { label: 'Mark', stamina: 8 },
   deny: { label: 'Deny pass', stamina: 8 },
   protect: { label: 'Protect paint', stamina: 6 },
@@ -116,6 +117,15 @@ export function createMatch(seed: number, openingTeam: Team = 0): Match {
   return match
 }
 
+export function createPickAndRollPractice(): Match {
+  const match = createMatch(0)
+  athleteById(match, '0-0').position = { x: 25, y: 24 }
+  athleteById(match, '0-4').position = { x: 20, y: 20 }
+  athleteById(match, '1-0').position = { x: 26, y: 21 }
+  athleteById(match, '1-4').position = { x: 17, y: 17 }
+  return match
+}
+
 export function finished(match: Match): boolean {
   return match.turn > TURN_LIMIT
 }
@@ -149,7 +159,9 @@ export function legalCommands(match: Match, id: string): Command[] {
       }
     }
     if (distance(athlete.position, COURT.hoop) <= 34) commands.push({ athlete: id, kind: 'catch-shoot' })
-    if (distance(athlete.position, holder.position) <= 15) commands.push({ athlete: id, kind: 'screen' })
+    if (distance(athlete.position, holder.position) <= 15) {
+      commands.push({ athlete: id, kind: 'screen' }, { athlete: id, kind: 'roll-screen' })
+    }
     LANDMARKS.forEach((point, target) => {
       if (distance(athlete.position, point) <= 3) return
       commands.push({ athlete: id, kind: 'cut', target })
@@ -258,7 +270,8 @@ function assignment(match: Match, athlete: Athlete, command: Command | undefined
     case 'relay':
     case 'shoot':
     case 'catch-shoot':
-    case 'screen': return athlete.position
+    case 'screen':
+    case 'roll-screen': return athlete.position
   }
 
   if (athlete.team !== holder.team) {
@@ -268,6 +281,10 @@ function assignment(match: Match, athlete: Athlete, command: Command | undefined
     return athlete.position
   }
   return athlete.home
+}
+
+export function rollTarget(player: Athlete): Point {
+  return { x: COURT.hoop.x + (player.position.x < COURT.hoop.x ? -3.5 : 3.5), y: 9 }
 }
 
 function drives(command: Command | undefined): boolean {
@@ -301,12 +318,15 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   const holder = athleteById(next, match.holder)
   const commands = new Map(plans.flat().map(command => [command.athlete, command]))
   const screened = new Set<string>()
+  const rolls = new Map<string, Point>()
 
   const ordered = [...next.athletes].sort((a, b) =>
     reach(b) - reach(a) || Number(b.team === (match.turn % 2)) - Number(a.team === (match.turn % 2))
     || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
-  for (const screener of ordered.filter(athlete => commands.get(athlete.id)?.kind === 'screen')) {
+  for (const screener of ordered) {
+    const action = commands.get(screener.id)?.kind
+    if (action !== 'screen' && action !== 'roll-screen') continue
     const defender = defendersNear(next, holder, 8)
       .sort((a, b) => distance(a.position, holder.position) - distance(b.position, holder.position))
       .find(athlete => !screened.has(athlete.id))
@@ -323,6 +343,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     }
     if (distance(screener.position, defender.position) <= 4) {
       screened.add(defender.id)
+      if (action === 'roll-screen') rolls.set(screener.id, rollTarget(screener))
       emit('movement', `${screener.name} screens ${defender.name}, holding the defender in place and taking away their contest.`,
         { type: 'contact', athlete: screener.id, opponent: defender.id })
     } else {
@@ -337,7 +358,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   if (switcher && screenedDefender) {
     const matchup = matchedAthlete(next, switcher)
     switches.set(switcher.id, stepToward(holder.position, COURT.hoop, 2.7))
-    switches.set(screenedDefender.id, stepToward(matchup.position, COURT.hoop, 2.5))
+    switches.set(screenedDefender.id, stepToward(rolls.get(matchup.id) ?? matchup.position, COURT.hoop, 2.5))
     screened.delete(screenedDefender.id)
     emit('movement', `${switcher.name} switches onto ${holder.name}. ${screenedDefender.name} picks up ${matchup.name}.`)
   }
@@ -348,7 +369,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   const destinations = new Map(ordered.map(athlete => {
     const chosen = commands.get(athlete.id)
     const order = chosen?.kind === 'help' && !driving ? { ...chosen, kind: 'stay' as const } : chosen
-    return [athlete.id, switches.get(athlete.id) ?? assignment(next, athlete, order)]
+    return [athlete.id, switches.get(athlete.id) ?? rolls.get(athlete.id) ?? assignment(next, athlete, order)]
   }))
   const movementStart = events.length
   const moves: ResolvedMove[] = []
@@ -358,6 +379,10 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     const from = athlete.position
     const traveled = moveAthlete(athlete, destinations.get(athlete.id)!, reach(athlete, Boolean(command)) * adjustment, next.athletes)
     if (traveled > 0) moves.push({ athlete: athlete.id, from, to: athlete.position })
+    if (rolls.has(athlete.id)) {
+      emit('movement', traveled >= 2
+        ? `${athlete.name} rolls toward the rim.` : `${athlete.name} cannot roll through the traffic.`)
+    }
     const cuts = command?.kind === 'cut' || command?.kind === 'cut-and-finish'
     if (cuts || drives(command)) {
       emit('movement', traveled >= 2
@@ -417,7 +442,10 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
         return
       }
       const order = nextOrder?.kind
-      if (order === 'cut-and-finish' && distance(receiver.position, COURT.hoop) > 34) {
+      if (rolls.has(receiver.id) && distance(receiver.position, COURT.hoop) <= 15) {
+        emit('ball', `${receiver.name} catches on the roll and shoots.`)
+        takeShot(receiver)
+      } else if (order === 'cut-and-finish' && distance(receiver.position, COURT.hoop) > 34) {
         emit('ball', `${receiver.name} catches outside shooting range and holds the ball.`)
       } else if (order === 'catch-shoot' || order === 'cut-and-finish') {
         emit('ball', order === 'cut-and-finish'

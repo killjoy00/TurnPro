@@ -105,7 +105,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         const skill = baseSkill(data, lineupSport) + development(entry, lineupSport)
         const role = roleName(lineupSport, slot)
         const fit = roleProgress(lineupSport, role, entry.roleStarts[lineupSport][role] ?? 0)
-        return `<option value="${entry.id}" ${entry.id === id ? 'selected' : ''}>${data.name} · Skill ${skill}${fit.level ? ` · +${fit.level} ${fit.rating}` : ''} · ${entry.fatigue}% fatigue</option>`
+        return `<option value="${entry.id}" ${entry.id === id ? 'selected' : ''}>${data.name} · Skill ${skill}${fit.level ? ` · +${fit.level} ${fit.rating}` : ''} · ${ATHLETIC_TRAITS[data.naturalTrait].name} · ${entry.fatigue}% fatigue</option>`
       }).join('')
       return `<label class="lineup-choice"><span>${label}</span><select data-slot="${slot}" aria-label="${label} starter, slot ${slot + 1}" ${editable ? '' : 'disabled'}>${choices}</select></label>`
     }).join('')
@@ -172,7 +172,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     const prospects = availableProspects(club)
     const sign = prospects.length && editable
       ? `<section class="club-panel"><h3>Recruit one athlete this season</h3><div class="recruits">${prospects.map(entry =>
-        `<div><b>${entry.name}</b><p>${entry.specialty} · Awareness ${entry.awareness}${entry.keeper ? ' · Goalkeeper' : ''}</p>
+        `<div><b>${entry.name}</b><p>${entry.specialty} · ${ATHLETIC_TRAITS[entry.naturalTrait].name} · Awareness ${entry.awareness}${entry.keeper ? ' · Goalkeeper' : ''}</p>
         <p>${allowedSports.map(sport => `${SPORT[sport]} ${baseSkill(entry, sport)}`).join(' · ')}</p>
         <button data-recruit="${entry.id}">Sign ${entry.name}</button></div>`).join('')}</div></section>` : ''
     const headline = fixture
@@ -237,7 +237,9 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       <section class="club-panel"><h3>Roster</h3><div class="roster-list">${roster}</div></section>
       <section class="club-panel"><h3>${info.name}</h3>
         <p><b>Awareness ${info.awareness + player.film}</b>${player.film ? ` (+${player.film} from film)` : ''} · ${player.fatigue}% fatigue</p>
-        <ul class="athlete-traits" aria-label="Shared athletic attributes">${TRAITS.map(trait => `<li><b>${ATHLETIC_TRAITS[trait].name} ${player.athletics[trait]}/${MAX_TRAIT}</b>
+        <ul class="athlete-traits" aria-label="Shared athletic attributes">${TRAITS.map(trait => `<li>
+          <b>${ATHLETIC_TRAITS[trait].name} ${player.athletics[trait] + Number(info.naturalTrait === trait)}</b>
+          <small>${player.athletics[trait]}/${MAX_TRAIT} trained${info.naturalTrait === trait ? ' · +1 natural' : ''}</small>
           <small>${ATHLETIC_TRAITS[trait].detail}</small></li>`).join('')}</ul>
         <label class="lineup-choice">Specialty <select data-specialty aria-label="Specialty for ${info.name}" ${editable ? '' : 'disabled'}>
           ${Object.keys(SPECIALTIES).map(key => `<option ${key === player.specialty ? 'selected' : ''}>${key}</option>`).join('')}</select></label>

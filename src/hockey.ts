@@ -47,8 +47,9 @@ export interface Match extends MatchSnapshot {
 }
 
 export type Command =
-  | { athlete: string; kind: 'carry' | 'shoot' | 'screen' | 'one-timer' | 'forecheck' | 'guard' | 'change' }
+  | { athlete: string; kind: 'carry' | 'shoot' | 'screen' | 'one-timer' | 'forecheck' | 'guard' | 'change' | 'show-outlet' }
   | { athlete: string; kind: 'pass'; target: string }
+  | { athlete: string; kind: 'wall-outlet'; target: string }
   | { athlete: string; kind: 'skate'; target: number }
 
 export const ACTIONS = {
@@ -60,6 +61,8 @@ export const ACTIONS = {
   guard: { label: 'Guard the slot', stamina: 7 },
   change: { label: 'Call line change', stamina: 0 },
   pass: { label: 'Pass to', stamina: 7 },
+  'wall-outlet': { label: 'Bank outlet to', stamina: 10 },
+  'show-outlet': { label: 'Show at the boards', stamina: 8 },
   skate: { label: 'Skate to', stamina: 10 },
 } satisfies Record<Command['kind'], { label: string; stamina: number }>
 
@@ -159,6 +162,16 @@ export function createRushPractice(): Match {
   return match
 }
 
+export function createBreakoutPractice(): Match {
+  const match = createMatch(0)
+  match.holder = '0-3'
+  bySlot(match, 0, 3).position = { x: 22, y: 12 }
+  bySlot(match, 0, 1).position = { x: 39, y: 12 }
+  bySlot(match, 1, 0).position = { x: 28, y: 11 }
+  bySlot(match, 1, 2).position = { x: 33, y: 15 }
+  return match
+}
+
 export function finished(match: Match): boolean {
   return match.turn > TURN_LIMIT
 }
@@ -183,12 +196,20 @@ export function legalCommands(match: Match, id: string): Command[] {
       if (distance(player.position, attackGoal(match, player.team)) <= 35) options.push({ athlete: id, kind: 'shoot' })
     }
     for (const teammate of match.athletes) {
-      if (teammate.id !== id && teammate.team === player.team && teammate.slot < 5
-        && distance(teammate.position, player.position) <= 37) options.push({ athlete: id, kind: 'pass', target: teammate.id })
+      if (teammate.id === id || teammate.team !== player.team || teammate.slot >= 5) continue
+      if (distance(teammate.position, player.position) <= 37) options.push({ athlete: id, kind: 'pass', target: teammate.id })
+      const side = player.position.y - MID
+      const wing = teammate.position.y - MID
+      if (depth(match, player.team, player.position) <= 34 && teammate.slot < 3 && Math.abs(wing) >= 9
+        && side * wing > 0 && depth(match, player.team, teammate.position) <= 57) {
+        options.push({ athlete: id, kind: 'wall-outlet', target: teammate.id })
+      }
     }
   } else if (player.slot === 5) {
     options.push({ athlete: id, kind: 'change' })
   } else if (player.team === holder.team) {
+    if (player.slot < 3 && depth(match, player.team, holder.position) <= 34
+      && distance(player.position, outletTarget(match, player)) >= 4) options.push({ athlete: id, kind: 'show-outlet' })
     for (let lane = 0; lane < LANES.length; lane++) options.push({ athlete: id, kind: 'skate', target: lane })
     if (depth(match, player.team, player.position) >= 64) options.push({ athlete: id, kind: 'screen' })
     if (distance(player.position, attackGoal(match, player.team)) <= 35) options.push({ athlete: id, kind: 'one-timer' })
@@ -200,7 +221,7 @@ export function legalCommands(match: Match, id: string): Command[] {
 }
 
 export function commandLabel(match: Match, order: Command): string {
-  if (order.kind === 'pass') return `Pass to ${athleteById(match, order.target).name}`
+  if (order.kind === 'pass' || order.kind === 'wall-outlet') return `${ACTIONS[order.kind].label} ${athleteById(match, order.target).name}`
   if (order.kind === 'skate') return `Skate to ${LANES[order.target].toLowerCase()}`
   if (order.kind === 'change') return `Call line change to line ${2 - match.lines[athleteById(match, order.athlete).team]}`
   return ACTIONS[order.kind].label
@@ -211,11 +232,18 @@ export function reserveStamina(match: Match, team: Team): number {
   return Math.round(line.reduce((sum, stamina) => sum + stamina, 0) / line.length)
 }
 
+function outletTarget(match: Match, athlete: Skater): Point {
+  const spot = orient(match, athlete.team, athlete.position)
+  return orient(match, athlete.team, { x: Math.min(57, spot.x + 8), y: spot.y < MID ? 4 : RINK.height - 4 })
+}
+
 export function commandTarget(match: Match, order: Command): Point | undefined {
   const athlete = athleteById(match, order.athlete)
   const holder = athleteById(match, match.holder)
   switch (order.kind) {
     case 'pass': return athleteById(match, order.target).position
+    case 'wall-outlet': return bankPoint(athlete.position, athleteById(match, order.target).position)
+    case 'show-outlet': return outletTarget(match, athlete)
     case 'skate': return orient(match, athlete.team, { x: Math.min(93, depth(match, athlete.team, athlete.position) + 19),
       y: [7, MID, 41][order.target] })
     case 'forecheck': return stepToward(holder.position, athlete.position, 2)
@@ -282,18 +310,36 @@ export function previewShot(match: Match, command: Command, plan: readonly Comma
   return { ...shotEstimate(match, shooter, screened, oneTimer), screened, receivingPass }
 }
 
-function passLane(match: Match, player: Skater, receiver: Skater): Skater[] {
+function bankPoint(from: Point, to: Point): Point {
+  return { x: (from.x + to.x) / 2, y: to.y < MID ? 1 : RINK.height - 1 }
+}
+
+function passLane(match: Match, player: Skater, receiver: Skater, bank?: Point): Skater[] {
   return opponents(match, player.team).filter(defender => defender.slot < 5
-    && distanceToSegment(defender.position, player.position, receiver.position) <= 2.3)
+    && (bank ? Math.min(distanceToSegment(defender.position, player.position, bank),
+      distanceToSegment(defender.position, bank, receiver.position))
+      : distanceToSegment(defender.position, player.position, receiver.position)) <= 2.3)
     .sort((a, b) => distance(a.position, player.position) - distance(b.position, player.position))
 }
 
-export function passChance(match: Match, player: Skater, receiver: Skater): number {
-  const blockers = passLane(match, player, receiver)
+export function passChance(match: Match, player: Skater, receiver: Skater, banked = false): number {
+  const bank = banked ? bankPoint(player.position, receiver.position) : undefined
+  const blockers = passLane(match, player, receiver, bank)
+  const range = bank ? distance(player.position, bank) + distance(bank, receiver.position)
+    : distance(player.position, receiver.position)
   const read = ((player.awareness ?? 7) - 7) * 2 + (blockers.length && player.technique === 'thread-pass' ? 8 : 0)
-  return clamp(106 - distance(player.position, receiver.position) * 0.7
+  return clamp(106 - range * 0.7 - (banked ? 5 : 0)
     - blockers.reduce((cost, defender) => cost + 15 + (defender.defense ?? 0) + (defender.technique === 'read-play' ? 4 : 0), 0)
     + (player.passing - 7) * 2 + read, 22, 98)
+}
+
+export function previewOutlet(match: Match, order: Extract<Command, { kind: 'wall-outlet' }>, plan: readonly Command[]): number {
+  const player = athleteById(match, order.athlete)
+  const receiver = athleteById(match, order.target)
+  const support = plan.find(command => command.athlete === receiver.id && command.kind === 'show-outlet')
+  const position = support ? stepToward(receiver.position, outletTarget(match, receiver), movementRange(receiver, true))
+    : receiver.position
+  return passChance(match, player, { ...receiver, position }, true)
 }
 
 export function resolveTurn(match: Match, plans: Plans<Command>) {
@@ -312,11 +358,13 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     const before = athleteById(match, player.id)
     const order = orders.get(before.id)
     const target = order && commandTarget(match, order)
-    const resting = order?.kind === 'shoot' || order?.kind === 'pass' || order?.kind === 'one-timer' || before.id === original.id
+    const passing = order?.kind === 'pass' || order?.kind === 'wall-outlet'
+    const resting = order?.kind === 'shoot' || passing || order?.kind === 'one-timer' || before.id === original.id
     const pace = movementRange(before, Boolean(order))
-    player.position = target && order?.kind !== 'pass' && order?.kind !== 'shoot'
+    player.position = target && !passing && order?.kind !== 'shoot'
       ? stepToward(before.position, target, pace)
       : resting ? before.position : stepToward(before.position, assignment(match, before, original), pace * 0.4)
+    if (order?.kind === 'show-outlet') emit('movement', `${player.name} offers an outlet along the boards.`)
     if (order?.kind === 'forecheck' || order?.kind === 'skate' || order?.kind === 'carry') {
       const distanceMoved = Math.round(distance(before.position, player.position) * 0.61)
       emit('movement', `${player.name} ${order.kind === 'forecheck' ? 'closes' : 'skates'} ${distanceMoved} m.`)
@@ -358,17 +406,21 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   const order = orders.get(carrier.id)
   if (order?.kind === 'shoot') {
     shoot(carrier, false)
-  } else if (order?.kind === 'pass') {
+  } else if (order?.kind === 'pass' || order?.kind === 'wall-outlet') {
     const receiver = athleteById(next, order.target)
-    const chance = passChance(next, carrier, receiver)
+    const banked = order.kind === 'wall-outlet'
+    const chance = passChance(next, carrier, receiver, banked)
     if (roll() < chance) {
       next.holder = receiver.id
-      emit('ball', `${carrier.name} finds ${receiver.name} (${Math.round(chance)}% completion).`)
+      emit('ball', banked
+        ? `${carrier.name} banks the puck along the boards to ${receiver.name} (${Math.round(chance)}% completion).`
+        : `${carrier.name} finds ${receiver.name} (${Math.round(chance)}% completion).`)
       if (orders.get(receiver.id)?.kind === 'one-timer') shoot(receiver, true)
     } else {
-      const interceptor = passLane(next, carrier, receiver)[0] ?? nearby(next, receiver, Infinity)[0]
+      const bank = banked ? bankPoint(carrier.position, receiver.position) : undefined
+      const interceptor = passLane(next, carrier, receiver, bank)[0] ?? nearby(next, receiver, Infinity)[0]
       next.holder = interceptor.id
-      emit('turnover', `${interceptor.name} takes the puck from ${carrier.name}’s pass (${Math.round(chance)}% completion).`)
+      emit('turnover', `${interceptor.name} takes the puck from ${carrier.name}’s ${banked ? 'bank outlet' : 'pass'} (${Math.round(chance)}% completion).`)
     }
   } else {
     const pressure = nearby(next, carrier, 4).find(player => orders.get(player.id)?.kind === 'forecheck')

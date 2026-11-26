@@ -34,12 +34,21 @@ const basketballView: SportView<basketball.Match, basketball.Command> = {
       { label: 'Okafor · Set screen', athlete: '0-4', kind: 'screen' },
       { label: 'Vale · Catch and shoot', athlete: '0-1', kind: 'catch-shoot' },
     ],
+  }, {
+    name: 'Practice the pick-and-roll',
+    create: basketball.createPickAndRollPractice,
+    intro: 'Have Okafor screen and roll, then pass to him as he moves toward the rim.',
+    steps: [
+      { label: 'Okafor · Screen and roll', athlete: '0-4', kind: 'roll-screen' },
+      { label: 'Reed · Pass to Okafor', athlete: '0-0', kind: 'pass', target: '0-4' },
+    ],
   }],
   limit: () => basketball.COMMAND_LIMIT,
   legalCommands: basketball.legalCommands,
   label: basketball.commandLabel,
   stamina: command => basketball.ACTIONS[command.kind].stamina,
   preview(match, command) {
+    if (command.kind === 'roll-screen') return 'Roll after contact · pass for a close shot · '
     if (command.kind === 'cut-and-finish') return 'Pass from a teammate to trigger the shot · '
     if (command.kind === 'relay') return 'Pass to this athlete to trigger the relay · '
     if (command.kind !== 'shoot') return ''
@@ -48,6 +57,7 @@ const basketballView: SportView<basketball.Match, basketball.Command> = {
   },
   noOrders: () => 'Recover stamina on base assignments this turn.',
   previewTarget(match, command) {
+    if (command.kind === 'roll-screen') return basketball.rollTarget(basketball.athleteById(match, command.athlete))
     if (command.kind === 'cut' || command.kind === 'cut-and-finish') return basketball.LANDMARKS[command.target]
     return 'target' in command ? basketball.athleteById(match, command.target).position : undefined
   },
@@ -86,6 +96,15 @@ const soccerView: SportView<soccer.Match, soccer.Command> = {
         { label: 'Adeyemi · Run into the middle', athlete: '0-9', kind: 'run', target: 1 },
       ],
     },
+    {
+      name: 'Practice switching play',
+      create: soccer.createSwitchPractice,
+      intro: 'Pull the press toward Vale. Ask Ito to hold the far touchline, then switch the ball across.',
+      steps: [
+        { label: 'Ito · Show wide', athlete: '0-10', kind: 'show-wide' },
+        { label: 'Vale · Switch play to Ito', athlete: '0-8', kind: 'switch-field', target: '0-10' },
+      ],
+    },
   ],
   limit: match => match.commandLimit,
   legalCommands: soccer.legalCommands,
@@ -102,7 +121,7 @@ const soccerView: SportView<soccer.Match, soccer.Command> = {
       const pass = soccer.previewPass(match, command, plan)
       if (pass.offside) return 'Offside · '
       const lane = pass.defenders.length === 0 ? 'Clear' : pass.defenders.length === 1 ? 'Guarded' : 'Crowded'
-      return `${lane} · ~${Math.round(pass.chance)}% · `
+      return `${lane}${command.kind === 'switch-field' ? ' landing' : ''} · ~${Math.round(pass.chance)}% · `
     }
     return ''
   },
@@ -144,6 +163,14 @@ function mountHockey(signal: AbortSignal, season?: SeasonMatch<hockey.Match, hoc
         { label: 'Vale · Ready one-timer', athlete: '0-1', kind: 'one-timer' },
         { label: 'Okafor · Screen the goalie', athlete: '0-2', kind: 'screen' },
       ],
+    }, {
+      name: 'Practice a bank breakout',
+      create: hockey.createBreakoutPractice,
+      intro: 'Send Vale to the boards. Bank Blake’s pass around the forecheck to reach the outlet.',
+      steps: [
+        { label: 'Vale · Show at the boards', athlete: '0-1', kind: 'show-outlet' },
+        { label: 'Blake · Bank outlet to Vale', athlete: '0-3', kind: 'wall-outlet', target: '0-1' },
+      ],
     }],
     legalCommands: hockey.legalCommands,
     label: hockey.commandLabel,
@@ -151,6 +178,7 @@ function mountHockey(signal: AbortSignal, season?: SeasonMatch<hockey.Match, hoc
     preview(match, order, plan) {
       const athlete = hockey.athleteById(match, order.athlete)
       if (order.kind === 'change') return `${hockey.reserveStamina(match, athlete.team)}% line stamina · `
+      if (order.kind === 'wall-outlet') return `Board route · ~${Math.round(hockey.previewOutlet(match, order, plan))}% · `
       if (order.kind === 'pass') {
         const receiver = hockey.athleteById(match, order.target)
         return `~${Math.round(hockey.passChance(match, athlete, receiver))}% now · `
@@ -199,6 +227,15 @@ function mountFootball(signal: AbortSignal, season?: SeasonMatch<football.Match,
         { label: 'Vale · Cut on a slant', athlete: '0-o-7', kind: 'slant' },
         { label: 'Blake · Pass protect', athlete: '0-o-2', kind: 'protect' },
       ],
+    }, {
+      name: 'Practice play-action',
+      create: football.createPlayActionPractice,
+      intro: 'The defense is expecting a run from Power. Fake the handoff, send Vale on a slant and protect the quarterback.',
+      steps: [
+        { label: 'Reed · Play-action to Vale', athlete: '0-o-0', kind: 'play-action', target: '0-o-7' },
+        { label: 'Vale · Cut on a slant', athlete: '0-o-7', kind: 'slant' },
+        { label: 'Blake · Pass protect', athlete: '0-o-2', kind: 'protect' },
+      ],
     }],
     limit: () => 3,
     legalCommands: football.legalCommands,
@@ -208,7 +245,7 @@ function mountFootball(signal: AbortSignal, season?: SeasonMatch<football.Match,
       if ('target' in order || order.kind === 'field-goal') {
         const reading = football.playEstimate(match, order, plan)
         return order.kind === 'field-goal' ? `~${reading.chance}% make · `
-          : `~${reading.chance}% catch · ${reading.sack}% sack · ${reading.yards} yd · `
+          : `${order.kind === 'play-action' ? 'Targets run fits · ' : ''}~${reading.chance}% catch · ${reading.sack}% sack · ${reading.yards} yd · `
       }
       if (order.kind === 'inside' || order.kind === 'sweep-left' || order.kind === 'sweep-right') {
         return `~${football.playEstimate(match, order, plan).yards} yd base · `
@@ -355,9 +392,10 @@ function enterFixture() {
   const session = openClubFixture(active)
   if (active !== club) updateClub(active)
   changeScreen('fixture')
-  const saveTurn = (orders: readonly PlanCommand[], match: MatchSnapshot, formation?: football.Formation) => {
+  const saveTurn = (orders: readonly PlanCommand[], match: MatchSnapshot, formation: football.Formation | undefined,
+    opponent: readonly PlanCommand[]) => {
     const previous = club!
-    const next = saveClubTurn(previous, orders, match, formation)
+    const next = saveClubTurn(previous, orders, match, formation, opponent)
     updateClub(next)
     if (next.pending) return []
     return next.roster.flatMap((athlete, index) => {
