@@ -71,6 +71,15 @@ function move(direction: Direction) {
   const origin = point(active)
   const horizontal = direction === 'left' || direction === 'right'
   const sign = direction === 'right' || direction === 'down' ? 1 : -1
+  const row = horizontal ? active.closest('[data-controller-row]') : null
+  if (row) {
+    const choices = items.filter(element => row.contains(element))
+    const neighbor = choices[choices.indexOf(active) + sign]
+    if (neighbor) {
+      focus(neighbor)
+      return
+    }
+  }
   const target = items.map(element => {
     const candidate = point(element)
     const ahead = (horizontal ? candidate.x - origin.x : candidate.y - origin.y) * sign

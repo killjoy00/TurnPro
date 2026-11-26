@@ -80,12 +80,12 @@ try {
 
     assert.equal(await active(), 'Open club season')
     await press(0)
+    assert.equal(await active(), 'Both sports · 6 fixtures')
     if (sport === 'soccer') {
       await press(15)
+      assert.equal(await active(), 'Basketball · 4 fixtures')
       await press(15)
       assert.equal(await active(), 'Soccer · 4 fixtures')
-    } else {
-      assert.equal(await active(), 'Both sports · 6 fixtures')
     }
     await press(0)
     assert.equal(await active(), 'Play fixture')
