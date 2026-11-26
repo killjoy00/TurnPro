@@ -3,7 +3,7 @@ import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Poin
 
 import {
   COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, teamNames, validatePlans,
-  type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type Team,
+  type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type PlayCue, type ResolvedMove, type Team,
 } from './match.ts'
 
 export { COMMAND_LIMIT, otherTeam, TEAMS } from './match.ts'
@@ -279,7 +279,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   const next = structuredClone(match)
   const random = seededRandom(match.randomState)
   const events = revealPlans(match, plans, commandLabel)
-  const emit = (kind: EventKind, text: string) => events.push({ kind, text })
+  const emit = (kind: EventKind, text: string, cue?: PlayCue) => events.push({ kind, text, cue })
   const offense = possessionTeam(match)
   const defense = otherTeam(offense)
   const holder = athleteById(next, match.holder)
@@ -299,10 +299,16 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       continue
     }
     const target = stepToward(defender.position, screener.position, 2.3)
-    moveAthlete(screener, target, reach(screener, true) * 0.8, next.athletes)
+    const from = screener.position
+    if (moveAthlete(screener, target, reach(screener, true) * 0.8, next.athletes) > 0) {
+      emit('movement', `${screener.name} moves to set a screen.`, {
+        type: 'move', moves: [{ athlete: screener.id, from, to: screener.position }],
+      })
+    }
     if (distance(screener.position, defender.position) <= 4) {
       screened.add(defender.id)
-      emit('movement', `${screener.name} screens ${defender.name}, holding the defender in place and taking away their contest.`)
+      emit('movement', `${screener.name} screens ${defender.name}, holding the defender in place and taking away their contest.`,
+        { type: 'contact', athlete: screener.id, opponent: defender.id })
     } else {
       emit('movement', `${screener.name} cannot get into screening position.`)
     }
@@ -328,10 +334,14 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     const order = chosen?.kind === 'help' && !driving ? { ...chosen, kind: 'stay' as const } : chosen
     return [athlete.id, switches.get(athlete.id) ?? assignment(next, athlete, order)]
   }))
+  const movementStart = events.length
+  const moves: ResolvedMove[] = []
   for (const athlete of ordered) {
     const command = commands.get(athlete.id)
     const adjustment = screened.has(athlete.id) ? 0 : switches.has(athlete.id) ? 0.7 : command ? 1 : 0.65
+    const from = athlete.position
     const traveled = moveAthlete(athlete, destinations.get(athlete.id)!, reach(athlete, Boolean(command)) * adjustment, next.athletes)
+    if (traveled > 0) moves.push({ athlete: athlete.id, from, to: athlete.position })
     if (command?.kind === 'cut' || drives(command)) {
       emit('movement', traveled >= 2
         ? `${athlete.name} ${command?.kind === 'cut' ? 'cuts' : 'drives'} ${Math.round(traveled)} ft.`
@@ -342,9 +352,17 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     }
   }
 
-  function changePossession(reason: string, kind: 'possession' | 'turnover' = 'possession') {
+  if (moves.length) events.splice(movementStart, 0, {
+    kind: 'movement', text: 'Athletes run their orders and base assignments.', cue: { type: 'move', moves },
+  })
+
+  function changePossession(reason: string) {
+    const before = next.athletes.map(athlete => athlete.position)
     setupPossession(next, defense)
-    emit(kind, `${reason} ${teamNames(next)[defense]} set up on offense.`)
+    const moves = next.athletes.map(({ id, position }, index) => ({ athlete: id, from: before[index], to: position }))
+    emit('possession', `${reason} ${teamNames(next)[defense]} set up on offense.`, {
+      type: 'reset', moves, holder: next.holder,
+    })
   }
 
   function passBall(target: string, kickout: boolean) {
@@ -361,28 +379,36 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       next.holder = receiver.id
       const pressure = shotEstimate(next, receiver, screened).pressure
       const read = kickout ? (pressure > 0 ? ' with the shooter covered' : ' for an open look') : ''
-      emit('ball', `${holder.name} ${kickout ? 'kicks out to' : 'finds'} ${receiver.name}${read} (${passDetail}).`)
+      emit('ball', `${holder.name} ${kickout ? 'kicks out to' : 'finds'} ${receiver.name}${read} (${passDetail}).`,
+        { type: 'ball', action: 'pass', from: holder.position, to: receiver.position, holder: receiver.id })
       if (commands.get(receiver.id)?.kind === 'catch-shoot') {
         emit('ball', `${receiver.name} catches and shoots.`)
         takeShot(receiver)
       }
     } else {
-      changePossession(lane.length
-        ? `${lane[0].name} intercepts the pass (${passDetail}).`
-        : `${holder.name}'s pass gets away (${passDetail}).`, 'turnover')
+      const interceptor = lane[0]
+      const message = interceptor
+        ? `${interceptor.name} intercepts the pass (${passDetail}).`
+        : `${holder.name}'s pass gets away (${passDetail}).`
+      emit('turnover', message, {
+        type: 'ball', action: interceptor ? 'interception' : 'pass', from: holder.position,
+        to: interceptor?.position ?? receiver.position, holder: interceptor?.id,
+      })
+      changePossession('After the turnover,')
     }
   }
 
   function takeShot(shooter: Athlete) {
     const shot = shotEstimate(next, shooter, screened)
     const detail = `${shot.chance}% chance, ${Math.round(shot.range)} ft, ${shot.pressure ? 'contested' : 'open'}`
+    const flight: PlayCue = { type: 'ball', action: 'shot', from: shooter.position, to: COURT.hoop }
     if (random.next() * 100 < shot.chance) {
       next.score[offense] += shot.points
-      emit('score', `${shooter.name} scores ${shot.points} (${detail}).`)
+      emit('score', `${shooter.name} scores ${shot.points} (${detail}).`, flight)
       changePossession('After the basket,')
       return
     }
-    emit('ball', `${shooter.name} misses a ${shot.points}-point attempt (${detail}).`)
+    emit('ball', `${shooter.name} misses a ${shot.points}-point attempt (${detail}).`, flight)
     const position = stepToward(COURT.hoop, shooter.position, 2 + random.next() * 6)
     const distances = next.athletes.map(athlete => distance(athlete.position, position))
     const nearest = Math.min(...distances)
@@ -398,6 +424,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       const offensive = athlete.team === offense
       events.push({
         kind: 'rebound', offensive,
+        cue: { type: 'ball', action: 'rebound', from: COURT.hoop, to: athlete.position, holder: athlete.id },
         text: `${athlete.name} takes the ${offensive ? 'offensive' : 'defensive'} rebound.`,
       })
       if (offensive) next.holder = athlete.id
@@ -411,7 +438,10 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   const stripChance = clamp(8 + pressure.length * 10 + fatiguePenalty(holder, 100, 0.15) + strength * 2, 8, 55)
   const stopped = pressure.length > 0 && random.next() * 100 < stripChance
   if (stopped) {
-    changePossession(`${pressure[0].name} strips ${holder.name} on the drive (${Math.round(stripChance)}% turnover risk).`, 'turnover')
+    const defender = pressure[0]
+    emit('turnover', `${defender.name} strips ${holder.name} on the drive (${Math.round(stripChance)}% turnover risk).`,
+      { type: 'ball', action: 'strip', from: holder.position, to: defender.position, holder: defender.id })
+    changePossession('After the strip,')
   } else {
     if (pressure.length > 0) emit('ball', `${holder.name} keeps control under pressure (${Math.round(stripChance)}% turnover risk).`)
     if (ballCommand?.kind === 'pass' || ballCommand?.kind === 'kickout') {

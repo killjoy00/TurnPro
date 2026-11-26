@@ -28,8 +28,7 @@ const SPORT: Record<Sport, string> = { basketball: 'Basketball', soccer: 'Soccer
 const TRAITS = Object.keys(ATHLETIC_TRAITS) as AthleticTrait[]
 const seasonOutcomeByIndex = (record: SeasonRecord, index: number) => seasonOutcome(record, index + 1)
 
-export function mountClub(container: HTMLElement, controller: ClubView, signal: AbortSignal, fullPrototype: boolean) {
-  const availableSports = fullPrototype ? SPORTS : SPORTS.slice(0, 2)
+export function mountClub(container: HTMLElement, controller: ClubView, signal: AbortSignal) {
   const startingTab = (club: Club | null) => club ? (nextFixture(club)?.sport ?? seasonSports(club.mode)[0]) : 'basketball'
   let lineupSport: Sport = startingTab(controller.getClub())
   let athlete = 'reed'
@@ -44,11 +43,11 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         <h2>Comets club</h2>
         <p>${club ? 'Choose a schedule for the next season with your existing club.' : 'Choose a schedule for your solo season.'}</p>
         <div class="club-actions" data-controller-row>
-          ${fullPrototype ? '<button class="primary" data-season="all">All four sports · 12 fixtures</button>' : ''}
-          <button data-season="both">${fullPrototype ? 'Basketball &amp; soccer' : 'Both sports'} · 6 fixtures</button>
+          <button class="primary" data-season="all">All four sports · 12 fixtures</button>
+          <button data-season="both">Basketball &amp; soccer · 6 fixtures</button>
           <button data-season="basketball">Basketball · 4 fixtures</button>
           <button data-season="soccer">Soccer · 4 fixtures</button>
-          ${fullPrototype ? '<button data-season="hockey">Ice hockey · 4 fixtures</button><button data-season="football">American football · 4 fixtures</button>' : ''}
+          <button data-season="hockey">Ice hockey · 4 fixtures</button><button data-season="football">American football · 4 fixtures</button>
           ${club ? '<button data-action="cancel">Back to completed season</button>' : ''}
         </div>
       </section>${saveControls(Boolean(club))}
@@ -101,7 +100,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       }).join('')
       return `<label class="lineup-choice"><span>${label}</span><select data-slot="${slot}" aria-label="${label} starter, slot ${slot + 1}" ${editable ? '' : 'disabled'}>${choices}</select></label>`
     }).join('')
-    const stats = availableSports.map(sport => {
+    const stats = SPORTS.map(sport => {
       const stat = ratings(player, sport)
       const options = (Object.keys(TECHNIQUES) as Technique[]).map(key => {
         if (TECHNIQUES[key].specialty && TECHNIQUES[key].specialty !== player.specialty) return ''
@@ -161,12 +160,12 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     const rivalRows = rivalryRecords([...club.history, club]).map(row => {
       const rival = RIVALS.find(entry => entry.rival === row.rival)!
       return `<tr><th scope="row">${rival.rival}</th><td>${DEFENSE_NAMES[rival.basketball]}</td><td>${SHAPE_NAMES[rival.soccer]}</td>
-        ${fullPrototype ? `<td>${HOCKEY_STYLES[rival.hockey]}</td><td>${FOOTBALL_STYLES[rival.football]}</td>` : ''}
+        <td>${HOCKEY_STYLES[rival.hockey]}</td><td>${FOOTBALL_STYLES[rival.football]}</td>
         <td>${row.wins}–${row.draws}–${row.losses}</td></tr>`
     }).join('')
     const past = club.history.map(({ mode, results }, index) => {
       const record = results.map(([a, b]) => a > b ? 'W' : a === b ? 'D' : 'L').join('–')
-      return `<li>Season ${index + 1} · ${mode === 'all' ? 'All four sports' : mode === 'both' ? 'Both sports' : SPORT[mode]} · ${record} · ${completed[index]}</li>`
+      return `<li>Season ${index + 1} · ${mode === 'all' ? 'All four sports' : mode === 'both' ? 'Basketball &amp; soccer' : SPORT[mode]} · ${record} · ${completed[index]}</li>`
     }).join('')
     container.innerHTML = `<section class="club-hero"><h2>Comets club</h2>
       <p><b>Season ${club.season} · ${headline}</b>${opponent ? ` · ${opponent}` : ''}</p>
@@ -205,7 +204,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     </div>${sign}<details class="club-panel rival-records"><summary>Rival records</summary>
       <div class="schedule-scroll"><table class="schedule"><thead><tr><th scope="col">Club</th>
         <th scope="col">Basketball defense</th><th scope="col">Soccer defense</th>
-        ${fullPrototype ? '<th scope="col">Hockey defense</th><th scope="col">Football defense</th>' : ''}<th scope="col">W–D–L</th>
+        <th scope="col">Hockey defense</th><th scope="col">Football defense</th><th scope="col">W–D–L</th>
       </tr></thead><tbody>${rivalRows}</tbody></table></div></details>${past ? `<details class="club-panel past-seasons"><summary>Past seasons</summary><ol>${past}</ol></details>` : ''}
     ${saveControls(true)}`
   }

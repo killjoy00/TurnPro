@@ -6,9 +6,8 @@ import type { Point } from './math.ts'
 import { TECHNIQUES } from './club.ts'
 import type { LoggedTurn } from './club-fixture.ts'
 import { trackMatch } from './playtest.ts'
+import { playResolution } from './match-playback.ts'
 import type { Formation } from './football.ts'
-
-declare const TURN_PRO_FULL_PROTOTYPE: boolean
 
 export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
   id: 'basketball' | 'soccer' | 'hockey' | 'football'
@@ -54,6 +53,7 @@ const budget = element('budget')
 const orders = element('orders')
 const actions = element('actions')
 const commit = element<HTMLButtonElement>('commit')
+const skipPlayback = element<HTMLButtonElement>('skip-playback')
 const note = element('commit-note')
 const summary = element('summary')
 const turns = element('turns')
@@ -102,8 +102,23 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   const nextBudget = () => budgetInput.value === '4' ? 4 : 3
   const portrait = matchMedia('(max-width: 560px)')
   const isPortrait = () => sport.id !== 'basketball' && portrait.matches
+  const motion = matchMedia('(prefers-reduced-motion: reduce)')
+  let playback: AbortController | undefined
+  const planningControls = [markers, lineup, budgetPreset, practice, checklist, formationPanel, orders, assignmentToggle, actions]
+  function endPlayback() {
+    playback?.abort()
+    playback = undefined
+    skipPlayback.hidden = true
+    commit.hidden = false
+    for (const control of planningControls) control.inert = false
+  }
+  signal.addEventListener('abort', endPlayback, { once: true })
+  skipPlayback.addEventListener('click', () => playback?.abort(), { signal })
+  motion.addEventListener('change', () => {
+    if (motion.matches) playback?.abort()
+  }, { signal })
   let match = season?.match ?? sport.create(2026, nextBudget())
-  let track = TURN_PRO_FULL_PROTOTYPE ? trackMatch(sport.id, season ? 'club fixture' : 'quick match') : undefined
+  let track = trackMatch(sport.id, season ? 'club fixture' : 'quick match')
   let selected = selectPlayer()
   let plan: C[] = []
   const teams = teamNames(match)
@@ -170,8 +185,8 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     context.setLineDash([])
   }
 
-  function renderScore() {
-    const [home, away] = match.score
+  function renderScore(score = match.score) {
+    const [home, away] = score
     const clock = (match.turn > sport.turnLimit)
       ? `<strong>Final</strong>${home === away ? 'Draw' : `${teams[home > away ? 0 : 1]} win`}`
       : `<strong>${turnName} ${match.turn} / ${sport.turnLimit}</strong>${sport.clockDetail(match, isPortrait())}`
@@ -186,6 +201,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   }
 
   function renderBoard() {
+    if (playback) return
     const holder = findAthlete(match.athletes, match.holder)
     possession.classList.toggle('away', holder.team === 1)
     const object = sport.id === 'hockey' ? 'puck' : 'ball'
@@ -378,19 +394,37 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     turns.prepend(detail)
   }
 
-  commit.addEventListener('click', () => {
-    if (match.turn > sport.turnLimit || commit.disabled) return
+  commit.addEventListener('click', async () => {
+    if (playback || match.turn > sport.turnLimit || commit.disabled) return
     const turn = match.turn
     const practicing = steps.length > 0
     const opponent = sport.opponent(match, 1)
     const resolution = sport.resolveTurn(match, [plan, opponent])
     season?.saveTurn(plan, resolution.match, sport.formation?.current(match))
+    const focusWasInMatch = element('match-screen').contains(document.activeElement)
+    if (!motion.matches && resolution.events.some(event => event.cue && event.cue.type !== 'plan')) {
+      playback = new AbortController()
+      const playing = playback
+      skipPlayback.hidden = false
+      if (focusWasInMatch) skipPlayback.focus({ preventScroll: true })
+      scoreboard.scrollIntoView({ block: 'start' })
+      commit.hidden = true
+      for (const control of planningControls) control.inert = true
+      plan = []
+      drawBoard()
+      await playResolution(markers, summary, resolution.events, match.athletes, match.holder, project,
+        () => renderScore(resolution.match.score), playing.signal)
+      if (playback !== playing) return
+      const restoreFocus = document.activeElement === skipPlayback
+      endPlayback()
+      if (restoreFocus) commit.focus({ preventScroll: true })
+    }
     match = resolution.match
-    track?.(turn, match.score, Boolean(steps.length) || match.turn > sport.turnLimit)
+    track(turn, match.score, Boolean(steps.length) || match.turn > sport.turnLimit)
     if (practicing) {
       steps = []
       coached = true
-      if (TURN_PRO_FULL_PROTOTYPE) track = trackMatch(sport.id, 'quick match')
+      track = trackMatch(sport.id, 'quick match')
     }
     plan = []
     selected = selectPlayer()
@@ -404,12 +438,13 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   }, { signal })
 
   function restart(next: S, message: string, practiceSteps: readonly PracticeStep[] = []) {
+    endPlayback()
     steps = practiceSteps
     coached = false
     guidedMatch = false
     guidedStep = undefined
     match = next
-    if (TURN_PRO_FULL_PROTOTYPE) track = trackMatch(sport.id, practiceSteps.length ? 'practice' : 'quick match')
+    track = trackMatch(sport.id, practiceSteps.length ? 'practice' : 'quick match')
     selected = selectPlayer()
     plan = []
     turns.replaceChildren()

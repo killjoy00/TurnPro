@@ -4,17 +4,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { packager } from '@electron/packager'
+import { SPORTS } from '../src/league.ts'
 
-const { values } = parseArgs({ options: { launch: { type: 'boolean' }, platform: { type: 'string' } } })
+const { values } = parseArgs({ options: { platform: { type: 'string' } } })
 const platform = values.platform ?? process.platform
 if (!['linux', 'win32'].includes(platform) || process.arch !== 'x64') {
   throw new Error('Build the desktop playtest on 64-bit Windows or Linux.')
 }
 
-const launch = values.launch === true
-const htmlPath = launch ? 'dist/turn-pro-launch.html' : 'dist/turn-pro.html'
+const htmlPath = 'dist/turn-pro.html'
 const { version } = JSON.parse(await readFile('package.json', 'utf8'))
 const [html, main] = await Promise.all([readFile(htmlPath, 'utf8'), readFile('desktop/main.cjs', 'utf8')])
+const selector = html.match(/<select id="sport"[^>]*>([\s\S]*?)<\/select>/)?.[1] ?? ''
+const sports = Array.from(selector.matchAll(/<option value="([^"]+)"/g), option => option[1])
+if (sports.join() !== SPORTS.join()) throw new Error('The packaged game must offer all four sports.')
 const gameSha256 = createHash('sha256')
   .update(JSON.stringify([html.replaceAll('\r\n', '\n'), main.replaceAll('\r\n', '\n')]))
   .digest('hex')
@@ -27,7 +30,7 @@ try {
   ])
   const outputs = await packager({
     dir: staging,
-    out: launch ? 'release/launch' : 'release',
+    out: 'release',
     name: 'TurnPro',
     platform,
     arch: process.arch,
@@ -38,7 +41,7 @@ try {
   for (const output of outputs) {
     const payload = await readFile(join(output, 'resources', 'app.asar'))
     await writeFile(join(output, 'turn-pro-build.json'), JSON.stringify({
-      edition: launch ? 'launch' : 'playtest', platform, arch: 'x64', version, gameSha256,
+      sports, platform, arch: 'x64', version, gameSha256,
       payloadSha256: createHash('sha256').update(payload).digest('hex'),
     }, null, 2) + '\n')
   }

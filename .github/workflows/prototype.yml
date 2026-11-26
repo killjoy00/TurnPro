@@ -22,18 +22,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - run: npm run build && npm run build:launch
+      - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run smoke
       - uses: actions/upload-artifact@v7
         with:
           name: turn-pro-playtest
           path: dist/turn-pro.html
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v7
-        with:
-          name: turn-pro-launch-browser
-          path: dist/turn-pro-launch.html
           if-no-files-found: error
 
   desktop:
@@ -56,33 +51,20 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run desktop:package
-      - run: npm run desktop:launch
       - if: matrix.os == 'linux'
         run: |
           npx playwright install-deps chromium
           xvfb-run -a npm run desktop:smoke
-          xvfb-run -a npm run desktop:smoke -- --launch
           tar -czf release/TurnPro-linux-x64.tar.gz -C release TurnPro-linux-x64
-          tar -czf release/TurnPro-launch-linux-x64.tar.gz -C release/launch TurnPro-linux-x64
       - if: matrix.os == 'windows'
         run: |
           npm run desktop:smoke
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run desktop:smoke -- --launch
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path release/TurnPro-win32-x64 -DestinationPath release/TurnPro-windows-x64.zip
-          Compress-Archive -Path release/launch/TurnPro-win32-x64 -DestinationPath release/TurnPro-launch-windows-x64.zip
       - uses: actions/upload-artifact@v7
         with:
           name: turn-pro-${{ matrix.os }}-x64
           retention-days: 14
           compression-level: 0
           path: release/TurnPro-${{ matrix.os }}-x64.${{ matrix.extension }}
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v7
-        with:
-          name: turn-pro-launch-${{ matrix.os }}-x64
-          retention-days: 14
-          compression-level: 0
-          path: release/TurnPro-launch-${{ matrix.os }}-x64.${{ matrix.extension }}
           if-no-files-found: error

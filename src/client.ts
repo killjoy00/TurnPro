@@ -16,8 +16,6 @@ import { installGamepad } from './gamepad.ts'
 import { installDisplaySettings } from './display-settings.ts'
 import { installPlaytest } from './playtest.ts'
 
-declare const TURN_PRO_FULL_PROTOTYPE: boolean
-
 const basketballView: SportView<basketball.Match, basketball.Command> = {
   id: 'basketball',
   surfaceName: 'Half court',
@@ -239,8 +237,8 @@ const clubNav = document.getElementById('club-nav') as HTMLButtonElement
 const clubScreen = document.getElementById('club-screen')!
 const matchScreen = document.getElementById('match-screen')!
 const warning = document.getElementById('save-warning')!
-const prototypeKey = 'turn-pro-club-v1'
-const key = TURN_PRO_FULL_PROTOTYPE ? prototypeKey : 'turn-pro-steam-preview-club-v1'
+const key = 'turn-pro-club-v1'
+const previousKey = 'turn-pro-steam-preview-club-v1'
 const guideKey = `${key}-guide-v1`
 const quickStart = document.getElementById('quick-start')!
 const quickStartTitle = document.getElementById('quick-start-title')!
@@ -259,26 +257,15 @@ function warn(message: string) {
   warning.textContent = message
 }
 
-function supportsSeason(state: Club) {
-  return TURN_PRO_FULL_PROTOTYPE || state.mode === 'both' || state.mode === 'basketball' || state.mode === 'soccer'
-}
-
 function verifyClub(state: Club) {
-  if (!supportsSeason(state)) throw new Error('This season requires the four-sport build.')
   if (state.pending) openClubFixture(state)
   return state
 }
 
 try {
   lastSaved = localStorage.getItem(key)
-  if (lastSaved) club = verifyClub(readClub(lastSaved))
-  else if (!TURN_PRO_FULL_PROTOTYPE) {
-    const previous = localStorage.getItem(prototypeKey)
-    if (previous) {
-      const state = readClub(previous)
-      if (supportsSeason(state)) club = verifyClub(state)
-    }
-  }
+  const saved = lastSaved ?? localStorage.getItem(previousKey)
+  if (saved !== null) club = verifyClub(readClub(saved))
 } catch {
   warn('Could not open the local club save. You can import an earlier export from the club screen.')
 }
@@ -343,7 +330,7 @@ function basketballDefense(style: DefenseStyle): typeof basketballView {
 
 function showQuick(resetDefense: boolean) {
   changeScreen('quick')
-  if (TURN_PRO_FULL_PROTOTYPE && (selector.value === 'hockey' || selector.value === 'football')) {
+  if (selector.value === 'hockey' || selector.value === 'football') {
     document.getElementById('quick-defense')!.hidden = true
     if (selector.value === 'hockey') mountHockey(route.signal)
     else mountFootball(route.signal)
@@ -367,8 +354,8 @@ function enterFixture() {
     updateClub(saveClubTurn(club!, orders, match, formation))
   if (session.sport === 'basketball') mountGame(basketballDefense(session.defense), route.signal, { ...session, saveTurn })
   else if (session.sport === 'soccer') mountGame(soccerView, route.signal, { ...session, saveTurn })
-  else if (TURN_PRO_FULL_PROTOTYPE && session.sport === 'hockey') mountHockey(route.signal, { ...session, saveTurn })
-  else if (TURN_PRO_FULL_PROTOTYPE && session.sport === 'football') mountFootball(route.signal, { ...session, saveTurn })
+  else if (session.sport === 'hockey') mountHockey(route.signal, { ...session, saveTurn })
+  else if (session.sport === 'football') mountFootball(route.signal, { ...session, saveTurn })
   document.querySelector<HTMLButtonElement>('#lineup button[aria-pressed="true"]')?.focus()
 }
 
@@ -398,7 +385,7 @@ function showClub() {
       const raw = await file.text()
       if (!signal.aborted) updateClub(verifyClub(readClub(raw)))
     },
-  }, signal, TURN_PRO_FULL_PROTOTYPE)
+  }, signal)
   clubScreen.querySelector<HTMLButtonElement>('[data-action="play"], [data-season]')?.focus()
 }
 
@@ -408,7 +395,7 @@ clubNav.addEventListener('click', () => screen === 'club' ? showQuick(true) : sh
 showQuick(true)
 
 const learn = document.getElementById('learn-dialog') as HTMLDialogElement
-if (TURN_PRO_FULL_PROTOTYPE) installPlaytest(learn)
+installPlaytest(learn)
 document.getElementById('learn-nav')!.addEventListener('click', () => learn.showModal())
 startGuide.addEventListener('click', () => learn.showModal())
 skipGuide.addEventListener('click', () => {

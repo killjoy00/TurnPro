@@ -7,8 +7,6 @@ import { planTurn as soccerAI } from './soccer-opponent.ts'
 import { planTurn as hockeyAI, type HockeyStyle } from './hockey-opponent.ts'
 import { planTurn as footballAI, type FootballStyle } from './football-opponent.ts'
 
-declare const TURN_PRO_FULL_PROTOTYPE: boolean
-
 export const SPORTS = ['basketball', 'soccer', 'hockey', 'football'] as const
 export type Sport = typeof SPORTS[number]
 export type SeasonMode = Sport | 'both' | 'all'
@@ -86,20 +84,17 @@ export function simulateRivals(fixture: Fixture, options?: { rulesVersion: numbe
     }
     return match.score
   }
-  if (typeof TURN_PRO_FULL_PROTOTYPE === 'undefined' || TURN_PRO_FULL_PROTOTYPE) {
-    if (fixture.sport === 'hockey') {
-      let match = hockey.createMatch(seed, openingTeam)
-      while (!hockey.finished(match)) match = hockey.resolveTurn(match, [hockeyAI(match, 0, home.hockey), hockeyAI(match, 1, away.hockey)]).match
-      return match.score
-    }
-    if (fixture.sport === 'football') {
-      let match = football.createMatch(seed, openingTeam)
-      if (options?.rulesVersion === football.PREVIOUS_RULES_VERSION) match.rulesVersion = football.PREVIOUS_RULES_VERSION
-      while (!football.finished(match)) match = football.resolveTurn(match, [footballAI(match, 0, home.football), footballAI(match, 1, away.football)]).match
-      return match.score
-    }
+  if (fixture.sport === 'hockey') {
+    let match = hockey.createMatch(seed, openingTeam)
+    while (!hockey.finished(match)) match = hockey.resolveTurn(match, [hockeyAI(match, 0, home.hockey), hockeyAI(match, 1, away.hockey)]).match
+    return match.score
   }
-  if (fixture.sport !== 'soccer') throw new Error('This fixture requires the four-sport build.')
+  if (fixture.sport === 'football') {
+    let match = football.createMatch(seed, openingTeam)
+    if (options?.rulesVersion === football.PREVIOUS_RULES_VERSION) match.rulesVersion = football.PREVIOUS_RULES_VERSION
+    while (!football.finished(match)) match = football.resolveTurn(match, [footballAI(match, 0, home.football), footballAI(match, 1, away.football)]).match
+    return match.score
+  }
   let match = soccer.createMatch(seed, openingTeam, 3, away.soccer)
   if (options?.rulesVersion === soccer.PREVIOUS_RULES_VERSION) match.rulesVersion = soccer.PREVIOUS_RULES_VERSION
   match.shapes[0] = home.soccer

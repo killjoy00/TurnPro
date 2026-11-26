@@ -199,7 +199,8 @@ export function installGamepad() {
       startSettings()
     } else if (!select && !modal() && document.querySelector('#match-screen:not([hidden])')) {
       if (action === 'commit') {
-        const button = document.getElementById('commit') as HTMLButtonElement
+        const skip = document.getElementById('skip-playback') as HTMLButtonElement
+        const button = skip.hidden ? document.getElementById('commit') as HTMLButtonElement : skip
         if (!button.disabled) {
           focus(button)
           button.click()

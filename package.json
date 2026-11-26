@@ -16,8 +16,6 @@
     "simulate:playtest": "node scripts/playtest-audit.mjs",
     "desktop:package": "npm run build && node scripts/package-desktop.mjs",
     "desktop:smoke": "node scripts/desktop-smoke.mjs",
-    "build:launch": "node scripts/build.mjs --launch",
-    "desktop:launch": "npm run build:launch && node scripts/package-desktop.mjs --launch",
     "steam:preview": "node scripts/steampipe-preview.mjs"
   },
   "devDependencies": {

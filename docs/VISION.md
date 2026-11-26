@@ -43,7 +43,7 @@ The match should be worth replaying with a different plan before persistent prog
 
 Three direct commands per side, each assigned to a distinct athlete, is the starting hypothesis. Uncommanded athletes fill visible assignments such as spacing, marking, rotating, blocking, or rebounding. Movement, role, fatigue, and nearby threats influence those assignments. Future trials can compare free commands, primary/support/flexible slots, action points, and simple conditions such as a pass when double-teamed.
 
-Resolution uses phases within one jointly planned turn. A screen can be set before movement, a defender can rotate during the drive, and a pass or shot can then resolve in the resulting space. Local pressure estimates describe the current state and can change after either side moves. Controlled, seeded randomness adds uncertainty to execution. Previews and the turn log explain the factors players can influence.
+Resolution uses phases within one jointly planned turn. A screen can be set before movement, a defender can rotate during the drive, and a pass or shot can then resolve in the resulting space. Local pressure estimates describe the current state and can change after either side moves. Controlled, seeded randomness adds uncertainty to execution. Previews and the turn log explain the factors players can influence. Basketball now reveals both plans and uses resolved events to show movement, screens, and ball flight on the court. A player can skip the sequence, and the game follows the system’s reduced-motion setting.
 
 ## Athlete and club progression
 
@@ -100,7 +100,7 @@ The seeded AI comparison uses the same 500 starting seeds for both budgets. Thre
 
 ## First club season playtest
 
-A club can play four fixtures in one sport or six fixtures over three weeks in both. Recruit one prospect, change starters and specialties, and spend one training session per week. Results and training add experience for the sport played. Awareness influences passing in both sports. Playing a second fixture in a week carries fatigue into the next starting lineup, so one athlete's value depends on who can cover for them. A completed season preserves results and points. The browser saves at each committed turn, and an exported file can restore the club and its current fixture. The save records plans with the rules version so the active match can be reconstructed.
+A club can play four fixtures in one sport or six fixtures over three weeks across basketball and soccer. Recruit one prospect, change starters and specialties, and spend one training session per week. Results and training add experience for the sport played. Awareness influences passing in basketball and soccer. Playing a second fixture in a week carries fatigue into the next starting lineup, so one athlete's value depends on who can cover for them. A completed season preserves results and points. The browser saves at each committed turn, and an exported file can restore the club and its current fixture. The save records plans with the rules version so the active match can be reconstructed.
 
 Quick matches and club rivals test explicit tactical responses. High-press soccer opponents commit players forward. Compact opponents keep their shape and narrow the middle. The two soccer drills exercise a through ball with a timed run and a cross to a central runner. The pass preview uses public positions, base defensive shape, and your queued run. The turn log reports the defenders that actually closed the lane after both plans were revealed. Basketball can resolve a finish at the rim or a kick-out with a queued catch-and-shoot. The defense can switch a screen, help on a drive, or stay with a shooter.
 
@@ -126,7 +126,7 @@ Hockey starts five skaters and a goalie, with a named reserve line. Reserve skat
 
 The same solo build runs as offline HTML and as a packaged Windows or Linux desktop app. The desktop build uses a stable local origin for saves. Guided practice gives players a checklist for coordinated turns, and controller settings let players remap the game’s action buttons. The base assignment overlay explains what an uncommanded athlete will try to do and previews default movement where the engine models it.
 
-Before the paid release, play a full match and resume a save on a physical Steam Deck in Gaming Mode. Check controller-only navigation, on-screen instructions, text readability, and suspend and resume there. Use the verified Windows and Linux executables as launch options when setting up the corresponding Steam depots. Steam’s store page and build review follow once the commercial build and store materials are ready. [Valve’s hardware review](https://partner.steamgames.com/doc/steamhardware/compat) · [SteamPipe upload](https://partner.steamgames.com/doc/sdk/uploading) · [Steam review process](https://partner.steamgames.com/doc/store/review_process)
+Before the paid release, play a full match in each sport and resume a club save on a physical Steam Deck in Gaming Mode. Check controller-only navigation, on-screen instructions, text readability, and suspend and resume there. Use the verified Windows and Linux executables as launch options when setting up the corresponding Steam depots. Steam’s store page and build review follow once the commercial build and store materials are ready. [Valve’s hardware review](https://partner.steamgames.com/doc/steamhardware/compat) · [SteamPipe upload](https://partner.steamgames.com/doc/sdk/uploading) · [Steam review process](https://partner.steamgames.com/doc/store/review_process)
 
 ## Club league and final
 
@@ -151,15 +151,15 @@ Use CI to compile, run tests, and produce a downloadable browser build. Start wi
 | Stage | Gate |
 | --- | --- |
 | 1. Playable basketball | Finish a 5-on-5 match against AI. Execute and understand a coordinated offensive plan and a defensive response. Repeat a scripted match exactly in headless CI. |
-| 2. Soccer architecture test | Complete an 11-on-11 match scenario with goalkeeping, spatial buildup, and shape. Verify that both sports can use the shared planning and event contract. Compare command budgets before expanding the architecture. |
+| 2. Soccer architecture test | Complete an 11-on-11 match scenario with goalkeeping, spatial buildup, and shape. Verify that basketball and soccer can use the shared planning and event contract. Compare command budgets before expanding the architecture. |
 | 3. Tactical refinement | Demonstrate more than one effective attack and defensive response in each sport. Use playtests and simulations to tune plans, feedback, pacing, AI, and controls. |
 | 4. Athlete and club RPG | Show an athlete carrying a transferable strength between basketball and soccer while improving each sport's skills independently. Run a short career with recruitment, training, rivals, and meaningful roster choices. |
 | 5. Four-sport prototype | Deliver the combined build and meet the prototype completion gates above. |
 | 6. Four-sport playtest | Observe players completing coached plays and full matches. Test lineup rotation, league pacing, and whether film, recovery, and technical practice each create viable choices across a four-sport season. |
-| 7. Steam release | Ship at least full-sided basketball and soccer, with a complete solo loop, readable onboarding, local saves, gamepad support, Steam Deck verification, and a release-quality build. Decide the commercial scope of hockey and football after playtesting. |
+| 7. Steam release | Ship full-sided basketball, soccer, ice hockey, and American football together, with a complete solo loop, readable onboarding, local saves, gamepad support, Steam Deck verification, and a release-quality build. |
 | 8. Continued development | Sequence deeper careers, online competitive play, and mobile delivery according to evidence and capacity. |
 
-Steam and Steam Deck remain the first commercial targets. The [Steam packaging preview](STEAM-PREVIEW.md) tests the two-sport delivery pipeline. Physical Steam Deck testing and Steamworks review belong to the commercial release stage.
+Steam and Steam Deck remain the first commercial targets. The [Steam packaging preview](STEAM-PREVIEW.md) uses the same four-sport Windows and Linux packages as the playtest. Physical Steam Deck testing and Steamworks review belong to the commercial release stage.
 
 Turn Pro is planned as a premium game. Additional sports, campaigns, and cosmetics are possible later. Commercial decisions should protect the core play loop and the fairness of competitive modes.
 
