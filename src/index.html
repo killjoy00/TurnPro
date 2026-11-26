@@ -46,7 +46,10 @@
       <section aria-labelledby="court-title" class="court-section">
         <div class="section-bar">
           <h2 id="court-title">Half court</h2>
-          <span id="possession" class="possession"></span>
+          <div class="court-status">
+            <span id="possession" class="possession"></span>
+            <button id="skip-playback" class="top-action" type="button" hidden>Skip playback</button>
+          </div>
         </div>
         <p id="summary" class="summary" role="status"></p>
         <div class="court">
@@ -80,7 +83,6 @@
         <div id="actions" class="actions"></div>
         <div class="commit-area">
           <button id="commit" class="commit" type="button">Commit turn <span aria-hidden="true">→</span></button>
-          <button id="skip-playback" class="commit" type="button" hidden>Skip playback</button>
           <p id="commit-note" class="commit-note">Both teams reveal after you commit.</p>
         </div>
       </aside>

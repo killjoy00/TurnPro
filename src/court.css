@@ -328,6 +328,7 @@ html[data-contrast="high"] .court { outline: 1px solid #91b5c7; }
   .football .option small { text-align: left; }
 }
 
+.court-status { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
 .markers.playing .marker .ball { display: none; }
 .marker.revealed { box-shadow: 0 0 0 4px #f9e590, 0 2px 5px #0d2a27; }
 .resolved-ball {

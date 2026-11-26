@@ -3,7 +3,7 @@ import type { Point } from './math.ts'
 
 export async function playResolution(
   board: HTMLElement, status: HTMLElement, events: readonly TurnEvent[], athletes: readonly AthleteSnapshot[],
-  startingHolder: string, project: (point: Point) => Point, signal: AbortSignal,
+  startingHolder: string, project: (point: Point) => Point, onScore: () => void, signal: AbortSignal,
 ) {
   const markers = new Map([...board.querySelectorAll<HTMLElement>('[data-athlete]')]
     .map(marker => [marker.dataset.athlete!, marker]))
@@ -74,12 +74,15 @@ export async function playResolution(
       if (signal.aborted) break
       const cue = event.cue
       if (!cue || cue.type === 'plan') continue
-      status.textContent = event.text
+      if (cue.type !== 'ball') status.textContent = event.text
       if (cue.type === 'move') await movePlayers(cue.moves)
       if (cue.type === 'ball') {
         holder = cue.holder
         await travel(ball, cue.from, cue.to, cue.action === 'shot' ? 360 : 260)
+        if (signal.aborted) break
+        status.textContent = event.text
         if (event.kind === 'score') {
+          onScore()
           await animate(ball, [{ scale: 1 }, { scale: 2 }, { scale: 1 }], 380)
         }
       }

@@ -185,8 +185,8 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     context.setLineDash([])
   }
 
-  function renderScore() {
-    const [home, away] = match.score
+  function renderScore(score = match.score) {
+    const [home, away] = score
     const clock = (match.turn > sport.turnLimit)
       ? `<strong>Final</strong>${home === away ? 'Draw' : `${teams[home > away ? 0 : 1]} win`}`
       : `<strong>${turnName} ${match.turn} / ${sport.turnLimit}</strong>${sport.clockDetail(match, isPortrait())}`
@@ -407,11 +407,13 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
       const playing = playback
       skipPlayback.hidden = false
       if (focusWasInMatch) skipPlayback.focus({ preventScroll: true })
+      scoreboard.scrollIntoView({ block: 'start' })
       commit.hidden = true
       for (const control of planningControls) control.inert = true
       plan = []
       drawBoard()
-      await playResolution(markers, summary, resolution.events, match.athletes, match.holder, project, playing.signal)
+      await playResolution(markers, summary, resolution.events, match.athletes, match.holder, project,
+        () => renderScore(resolution.match.score), playing.signal)
       if (playback !== playing) return
       const restoreFocus = document.activeElement === skipPlayback
       endPlayback()
