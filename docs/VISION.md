@@ -51,6 +51,10 @@ An athlete has an identity, physical profile, tendencies, strengths, fatigue, an
 
 Specialties offer distinct tools and tradeoffs. Start by testing Playmaker, Defender, and Finisher builds with active, passive, or reaction choices that change decisions on the court. Later candidates include Speedster, Technician, Enforcer, Strategist, Captain, Ironman, and All-Rounder. A player might combine a Playmaker's passing options with a Defender's off-ball reaction while giving up a second scoring ability. The first shared progression experiment should demonstrate one athlete bringing a useful universal trait into soccer with a lower independent soccer skill level.
 
+The shared skill choices now include speed for movement and routes, strength for contact, endurance for unassigned recovery, and composure for accuracy under fatigue. Spend a weekly session to raise one attribute by one point, up to two points in each. Quick step extends ordered movement at 50 stamina or higher, and Anchor improves contact. Each unlock requires one point in its matching attribute and three XP in the sport. Equipping either uses the athlete's one ability slot in that sport.
+
+Role proficiency tracks where an athlete actually plays. Three appearances in a role earn +1 to its associated rating, and six earn +2. A basketball point guard improves passing, a hockey goalie improves keeping, and football retains proficiency for each paired role. A reserve skater earns proficiency after taking the ice. Lineup choices show any bonus for that position.
+
 The career grows from a modest roster through recruitment, training, lineups, recovery, competitions, and rival clubs. Distinct opponents should invite tactical adaptation. A possession-focused soccer rival demands a different plan from a transition-heavy one. Shared training resources and scheduling make specialists and generalists valuable in different situations.
 
 ## Competitive play and pacing
@@ -110,6 +114,8 @@ Two teams of five skaters and a goalie play three six-turn periods. Each team ca
 
 Two 11-player units take the field for each snap. The quarterback calls a handoff, sweep, quick pass, or deep pass. Use the remaining orders on blocking, protection, or a receiver's route. Defenders can blitz, fill a run gap, jump short routes, or drop deep. Four downs, yardage and field position drive the choices. On fourth down, go for the first down, punt, or try a field goal in range.
 
+On offense, choose Balanced, Power, or Spread before committing the snap. Power compresses the formation and helps inside runs. Spread widens the receivers and improves pass odds. The opponent can respond to the public formation before orders reveal, so running from Spread or throwing from Power can exploit a predictable defense. The formation appears in the turn log and is saved with committed orders in club fixtures.
+
 The quick match compresses four quarters into 24 snaps. Teams swap ends at halftime and use separate offensive and defensive units. Touchdowns include the extra point and post-score drives start from a fixed spot. **Practice third and five** gives the player a pass, a receiver's slant, and protection to line up on one snap. Test whether players recognize when a route or protection changes the odds and when to trade possession for field position.
 
 ## Career and desktop playtest
@@ -118,7 +124,7 @@ The four-sport season has 12 regular fixtures over six weeks. Each rival plays t
 
 Hockey starts five skaters and a goalie, with a named reserve line. Reserve skaters earn match XP after taking the ice. Football assigns 11 players to paired offensive and defensive roles, so a quarterback who spends stamina on a drive brings the same energy into the next defensive snap. XP, fatigue, and equipped abilities carry between seasons. Each athlete can equip one ability per sport. Specialty abilities require six XP and the relevant specialty in that sport. Second wind unlocks at five total XP across sports and improves in-match recovery on unassigned turns. Saves from versions 1 through 3 migrate with their existing results and in-progress fixtures.
 
-The same solo build runs as offline HTML and as a packaged Windows or Linux desktop app. The desktop build uses a stable local origin for saves. Guided practice gives players a checklist for coordinated turns, and controller settings let players remap the game’s action buttons.
+The same solo build runs as offline HTML and as a packaged Windows or Linux desktop app. The desktop build uses a stable local origin for saves. Guided practice gives players a checklist for coordinated turns, and controller settings let players remap the game’s action buttons. The base assignment overlay explains what an uncommanded athlete will try to do and previews default movement where the engine models it.
 
 Before the paid release, play a full match and resume a save on a physical Steam Deck in Gaming Mode. Check controller-only navigation, on-screen instructions, text readability, and suspend and resume there. Use the verified Windows and Linux executables as launch options when setting up the corresponding Steam depots. Steam’s store page and build review follow once the commercial build and store materials are ready. [Valve’s hardware review](https://partner.steamgames.com/doc/steamhardware/compat) · [SteamPipe upload](https://partner.steamgames.com/doc/sdk/uploading) · [Steam review process](https://partner.steamgames.com/doc/store/review_process)
 

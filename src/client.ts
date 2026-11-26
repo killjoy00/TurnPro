@@ -53,6 +53,7 @@ const basketballView: SportView<basketball.Match, basketball.Command> = {
   opponent: basketballAI,
   resolveTurn: basketball.resolveTurn,
   draw: drawBasketball,
+  baseAssignment: basketball.baseAssignment,
   clockDetail: () => 'Planning',
   opponentDetail: () => 'Balanced',
 }
@@ -112,6 +113,7 @@ const soccerView: SportView<soccer.Match, soccer.Command> = {
   opponent: soccerAI,
   resolveTurn: soccer.resolveTurn,
   draw: drawSoccer,
+  baseAssignment: soccer.baseAssignment,
   opponentDetail: match => soccer.SHAPE_NAMES[match.shapes[1]],
   clockDetail(match, portrait) {
     const forwards = soccer.direction(match, 0) === 1
@@ -163,6 +165,7 @@ function mountHockey(signal: AbortSignal, season?: SeasonMatch<hockey.Match, hoc
     opponent: (match, team) => hockeyAI(match, team, season?.style),
     resolveTurn: hockey.resolveTurn,
     draw: drawHockey,
+    baseAssignment: hockey.baseAssignment,
     opponentDetail: match => `Line ${match.lines[1] + 1}`,
     lineupDetail: match => `On ice · Line ${match.lines[0] + 1} · Reserve ${hockey.reserveStamina(match, 0)}% stamina`,
     clockDetail(match, portrait) {
@@ -216,6 +219,9 @@ function mountFootball(signal: AbortSignal, season?: SeasonMatch<football.Match,
     opponent: (match, team) => footballAI(match, team, season?.style),
     resolveTurn: football.resolveTurn,
     draw: drawFootball,
+    baseAssignment: football.baseAssignment,
+    formation: { options: football.FORMATIONS, current: match => match.offense === 0 ? (match.formation ?? 'balanced') : undefined,
+      set: football.setFormation },
     clockDetail: match => `Q${football.quarter(match)} · ${football.downLabel(match)}`,
     opponentDetail: match => match.offense === 1 ? 'Offense' : 'Defense',
     lineupDetail(match, portrait) {
@@ -324,7 +330,8 @@ function enterFixture() {
   const session = openClubFixture(active)
   if (active !== club) updateClub(active)
   changeScreen('fixture')
-  const saveTurn = (orders: readonly PlanCommand[], match: MatchSnapshot) => updateClub(saveClubTurn(club!, orders, match))
+  const saveTurn = (orders: readonly PlanCommand[], match: MatchSnapshot, formation?: football.Formation) =>
+    updateClub(saveClubTurn(club!, orders, match, formation))
   if (session.sport === 'basketball') mountGame(basketballDefense(session.defense), route.signal, { ...session, saveTurn })
   else if (session.sport === 'soccer') mountGame(soccerView, route.signal, { ...session, saveTurn })
   else if (TURN_PRO_FULL_PROTOTYPE && session.sport === 'hockey') mountHockey(route.signal, { ...session, saveTurn })

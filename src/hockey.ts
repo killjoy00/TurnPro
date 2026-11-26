@@ -1,3 +1,4 @@
+import { contactBonus, fatiguePenalty, movementMultiplier, recoveryBonus } from './athletics.ts'
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
 import {
   COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, teamNames, validatePlans,
@@ -244,14 +245,24 @@ export function shotEstimate(match: Match, player: Skater, screened = false, one
   const pressure = nearby(match, player, 5).filter(defender => defender.slot !== 5).length
   const keeper = bySlot(match, otherTeam(player.team), 5)
   const onTarget = clamp(92 - range * 1.4 - pressure * 9 + (player.finishing - 6) * 4
-    - Math.max(0, 70 - player.stamina) * 0.25 + (pressure === 0 && player.technique === 'clean-look' ? 8 : 0), 15, 94)
+    - fatiguePenalty(player, 70, 0.25) + (pressure === 0 && player.technique === 'clean-look' ? 8 : 0), 15, 94)
   const save = clamp(58 + range * 0.37 - Math.abs(keeper.position.y - MID) - (screened ? 23 : 0)
     - (oneTimer ? 15 : 0) + ((keeper.keeping ?? 8) - 8) * 3 + (keeper.technique === 'read-play' ? 8 : 0), 25, 90)
   return { range, pressure, onTarget, save, goal: Math.round(onTarget * (100 - save) / 100) }
 }
 
-function movementRange(player: Skater) {
-  return (8 + player.speed) * (0.67 + player.stamina * 0.0033)
+function movementRange(player: Skater, ordered = false) {
+  return (8 + player.speed) * (0.67 + player.stamina * 0.0033) * movementMultiplier(player, ordered)
+}
+
+export function baseAssignment(match: Match, id: string) {
+  const player = athleteById(match, id)
+  const holder = athleteById(match, match.holder)
+  if (player.id === holder.id) return { label: 'Hold the puck' }
+  return {
+    label: player.slot === 5 ? 'Track the puck in goal' : player.team === holder.team ? 'Support the puck carrier' : 'Keep defensive shape',
+    target: stepToward(player.position, assignment(match, player, holder), movementRange(player) * 0.4),
+  }
 }
 
 function screensGoal(match: Match, shooter: Skater, position: Point) {
@@ -266,7 +277,7 @@ export function previewShot(match: Match, command: Command, plan: readonly Comma
     if (order.kind !== 'screen') return false
     const player = athleteById(match, order.athlete)
     const target = commandTarget(match, order)!
-    return player.team === shooter.team && screensGoal(match, shooter, stepToward(player.position, target, movementRange(player)))
+    return player.team === shooter.team && screensGoal(match, shooter, stepToward(player.position, target, movementRange(player, true)))
   })
   return { ...shotEstimate(match, shooter, screened, oneTimer), screened, receivingPass }
 }
@@ -302,7 +313,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     const order = orders.get(before.id)
     const target = order && commandTarget(match, order)
     const resting = order?.kind === 'shoot' || order?.kind === 'pass' || order?.kind === 'one-timer' || before.id === original.id
-    const pace = movementRange(before)
+    const pace = movementRange(before, Boolean(order))
     player.position = target && order?.kind !== 'pass' && order?.kind !== 'shoot'
       ? stepToward(before.position, target, pace)
       : resting ? before.position : stepToward(before.position, assignment(match, before, original), pace * 0.4)
@@ -361,7 +372,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     }
   } else {
     const pressure = nearby(next, carrier, 4).find(player => orders.get(player.id)?.kind === 'forecheck')
-    if (pressure && roll() < 37 + (100 - carrier.stamina) * 0.25 + (pressure.defense ?? 0) * 3) {
+    const contact = pressure ? contactBonus(pressure) - contactBonus(carrier) : 0
+    if (pressure && roll() < 37 + fatiguePenalty(carrier, 100, 0.25) + (pressure.defense ?? 0) * 3 + contact * 4) {
       next.holder = pressure.id
       emit('turnover', `${pressure.name} wins the puck on the forecheck.`)
     } else {
@@ -371,7 +383,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
 
   for (const athlete of next.athletes) {
     const order = orders.get(athlete.id)
-    const recovery = athlete.technique === 'second-wind' ? 7 : 4
+    const recovery = (athlete.technique === 'second-wind' ? 7 : 4) + recoveryBonus(athlete)
     athlete.stamina = clamp(athlete.stamina + (order ? -ACTIONS[order.kind].stamina : recovery), 0, 100)
     if (next.club && athlete.team === 0) {
       const slot = athlete.slot === 5 ? 10 : next.lines[0] * 5 + athlete.slot

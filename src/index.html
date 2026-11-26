@@ -58,7 +58,13 @@
         </div>
         <div id="practice-tools" class="practice-tools" hidden></div>
         <div id="practice-checklist" class="practice-checklist" hidden aria-live="polite"></div>
+        <div id="formation-panel" class="formation-panel" hidden>
+          <label for="formation-select">Offensive formation</label>
+          <select id="formation-select" aria-describedby="formation-detail"></select>
+          <p id="formation-detail" aria-live="polite"></p>
+        </div>
         <div id="orders" class="orders" aria-label="Queued commands"></div>
+        <button type="button" id="assignment-toggle" class="top-action assignment-toggle" aria-pressed="false">Base assignments</button>
         <div id="actions" class="actions"></div>
         <div class="commit-area">
           <button id="commit" class="commit" type="button">Commit turn <span aria-hidden="true">→</span></button>

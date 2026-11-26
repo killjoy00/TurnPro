@@ -1,10 +1,16 @@
 import type { Point } from './math.ts'
+import type { Athletics } from './athletics.ts'
 
 export type Team = 0 | 1
 export const TEAMS = ['Comets', 'Forge'] as const
 export const COMMAND_LIMIT = 3
 
-export type Technique = 'thread-pass' | 'read-play' | 'clean-look' | 'second-wind'
+export type Technique = 'thread-pass' | 'read-play' | 'clean-look' | 'second-wind' | 'quick-step' | 'anchor'
+
+export interface BaseAssignment {
+  label: string
+  target?: Point
+}
 
 export interface AthleteBuild {
   name: string
@@ -15,6 +21,7 @@ export interface AthleteBuild {
   defense: number
   keeping: number
   technique?: Technique
+  athletics?: Athletics
 }
 
 export interface Appearance {
@@ -34,6 +41,7 @@ export interface AthleteSnapshot {
   awareness?: number
   defense?: number
   technique?: Technique
+  athletics?: Athletics
 }
 
 export interface MatchSnapshot {

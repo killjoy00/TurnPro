@@ -27,7 +27,7 @@ function applyLineup(club: Club, sport: 'basketball' | 'soccer', match: MatchSna
   match.teams = ['Comets', rival]
   const lineup = club.lineups[sport]
   match.athletes.filter(player => player.team === 0).forEach((player, slot) => {
-    const { finishing, keeping, ...stats } = ratings(clubAthlete(club, lineup[slot]), sport)
+    const { finishing, keeping, ...stats } = ratings(clubAthlete(club, lineup[slot]), sport, slot)
     Object.assign(player, stats, sport === 'basketball' ? { shooting: finishing } : { finishing, keeping })
   })
 }
@@ -41,10 +41,13 @@ export function beginClubFixture(club: Club): Club {
 function replay<S extends MatchSnapshot & { rulesVersion: number }, C extends PlanCommand>(
   pending: NonNullable<Club['pending']>, match: S, fixedOpponent: (match: S, team: Team) => C[],
   resolve: (match: S, plans: Plans<C>) => { match: S; events: TurnEvent[] },
+  setFormation?: (match: S, formation: football.Formation) => S,
 ) {
   if (pending.rules !== match.rulesVersion) throw new Error('This fixture uses a different rules version.')
   const history: LoggedTurn[] = []
-  for (const orders of pending.turns) {
+  for (const [index, orders] of pending.turns.entries()) {
+    const formation = pending.formations?.[index]
+    if (formation && setFormation) match = setFormation(match, formation)
     const next = resolve(match, [orders as C[], fixedOpponent(match, 1)])
     history.push({ turn: match.turn, score: next.match.score, events: next.events })
     match = next.match
@@ -72,7 +75,7 @@ export function openClubFixture(club: Club):
     return { sport: 'soccer', ...replay(club.pending, match, soccerAI, soccer.resolveTurn) }
   }
   if (typeof TURN_PRO_FULL_PROTOTYPE === 'undefined' || TURN_PRO_FULL_PROTOTYPE) {
-    const lineup = club.lineups[fixture.sport].map(id => ratings(clubAthlete(club, id), fixture.sport))
+    const lineup = club.lineups[fixture.sport].map((id, slot) => ratings(clubAthlete(club, id), fixture.sport, slot))
     if (fixture.sport === 'hockey') {
       const match = hockey.createMatch(fixture.seed, 0, lineup)
       match.teams = ['Comets', fixture.rival]
@@ -83,18 +86,21 @@ export function openClubFixture(club: Club):
     if (club.pending.rules === football.PREVIOUS_RULES_VERSION) match.rulesVersion = football.PREVIOUS_RULES_VERSION
     match.teams = ['Comets', fixture.rival]
     return { sport: 'football', style: fixture.football,
-      ...replay(club.pending, match, (state, team) => footballAI(state, team, fixture.football), football.resolveTurn) }
+      ...replay(club.pending, match, (state, team) => footballAI(state, team, fixture.football), football.resolveTurn, football.setFormation) }
   }
   throw new Error('This fixture requires the four-sport build.')
 }
 
-export function saveClubTurn(club: Club, orders: readonly PlanCommand[], match: MatchSnapshot): Club {
+export function saveClubTurn(club: Club, orders: readonly PlanCommand[], match: MatchSnapshot, formation?: football.Formation): Club {
   const fixture = nextFixture(club)
   const pending = club.pending
   if (!fixture || !pending || match.seed !== fixture.seed || match.turn !== pending.turns.length + 2) {
     throw new Error('The fixture changed before this turn could be saved.')
   }
   const next = { ...club, pending: { ...pending, turns: [...pending.turns, [...orders]] } }
+  if (fixture.sport === 'football' && (formation || pending.formations)) {
+    next.pending.formations = [...(pending.formations ?? pending.turns.map(() => null)), formation ?? null]
+  }
   if (match.turn <= TURN_LIMITS[fixture.sport]) return next
   if (typeof TURN_PRO_FULL_PROTOTYPE === 'undefined' || TURN_PRO_FULL_PROTOTYPE) {
     if (fixture.sport === 'hockey') return settleFixture(next, match.score, match.athletes, hockey.clubAppearances(match as hockey.Match))
