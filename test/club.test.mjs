@@ -11,10 +11,9 @@ import { planTurn as soccerAI } from '../src/soccer-opponent.ts'
 
 function resolveClubTurn(club, session, orders = []) {
   const { match, sport } = session
-  const result = sport === 'basketball'
-    ? basketball.resolveTurn(match, [orders, basketballAI(match, 1, session.defense)])
-    : soccer.resolveTurn(match, [orders, soccerAI(match, 1)])
-  return { club: saveClubTurn(club, orders, result.match), session: { ...session, match: result.match }, result }
+  const opponent = sport === 'basketball' ? basketballAI(match, 1, session.defense) : soccerAI(match, 1)
+  const result = (sport === 'basketball' ? basketball : soccer).resolveTurn(match, [orders, opponent])
+  return { club: saveClubTurn(club, orders, result.match, undefined, opponent), session: { ...session, match: result.match }, result }
 }
 
 test('training and lineup decisions keep sport skills separate and share awareness', () => {
@@ -82,7 +81,7 @@ test('corrupted and incompatible saves cannot replace a valid season', () => {
   assert.throws(() => readClub(JSON.stringify(bad)), /lineups/)
   const active = beginClubFixture(club)
   assert.throws(() => openClubFixture(readClub(JSON.stringify({ ...active, pending: { rules: 999, turns: [] } }))), /rules version/)
-  const tampered = { ...active, pending: { ...active.pending, opponentPlans: [null], turns: [[{ athlete: '1-0', kind: 'shoot' }]] } }
+  const tampered = { ...active, pending: { ...active.pending, opponentPlans: [[]], turns: [[{ athlete: '1-0', kind: 'shoot' }]] } }
   assert.throws(() => openClubFixture(readClub(JSON.stringify(tampered))), /unavailable/)
 })
 
@@ -127,5 +126,6 @@ test('first-season saves from the previous build migrate without losing the acti
   const reed = clubAthlete(club, 'reed')
   assert.equal(reed.mastery.Playmaker, 1)
   assert.equal(clubAthlete(migrated, 'reed').mastery.Playmaker, 0)
-  assert.deepEqual(openClubFixture(migrated), openClubFixture(club))
+  assert.deepEqual(openClubFixture(migrated).history, openClubFixture(club).history)
+  assert.deepEqual(openClubFixture(migrated).match, openClubFixture(club).match)
 })

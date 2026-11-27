@@ -84,8 +84,9 @@ function playFixture(club) {
   let match = session.match
   for (let i = 0; i < TURN_LIMITS[fixture.sport]; i++) {
     const orders = opponent(match, 0)
-    const result = resolve(match, [orders, opponent(match, 1, session.defense ?? session.style)])
-    active = saveClubTurn(active, orders, result.match)
+    const reply = session.opponent(match, 1)
+    const result = resolve(match, [orders, reply])
+    active = saveClubTurn(active, orders, result.match, undefined, reply)
     match = result.match
     if (i === 0) {
       active = readClub(JSON.stringify(active))
@@ -125,7 +126,7 @@ test('a version 3 club resumes the same saved fixture with new development initi
   let club = beginClubFixture(createClub('both'))
   const session = openClubFixture(club)
   const result = basketball.resolveTurn(session.match, [[], basketballAI(session.match, 1, session.defense)])
-  club = saveClubTurn(club, [], result.match)
+  club = saveClubTurn(club, [], result.match, undefined, session.opponent(session.match, 1))
   const { basketball: basketballLine, soccer: soccerLine } = club.lineups
   const oldSave = {
     ...club, version: 3, lineups: { basketball: basketballLine, soccer: soccerLine },
@@ -136,18 +137,21 @@ test('a version 3 club resumes the same saved fixture with new development initi
   }
   const migrated = readClub(JSON.stringify(oldSave))
   assert.equal(migrated.version, 7)
-  assert.deepEqual(openClubFixture(migrated), openClubFixture(club))
+  assert.deepEqual(openClubFixture(migrated).history, openClubFixture(club).history)
+  assert.deepEqual(openClubFixture(migrated).match, openClubFixture(club).match)
   assert.deepEqual(migrated, club)
 })
 
 test('in-progress soccer and football fixtures retain their previous rules after tuning', () => {
   for (const [sport, rules, opponent] of [['soccer', soccer, soccerAI], ['football', football, footballAI]]) {
     const club = beginClubFixture(createClub(sport))
+    delete club.pending.start
     club.pending.rules = rules.PREVIOUS_RULES_VERSION
     const session = openClubFixture(club)
     const plan = opponent(session.match, 0)
-    const played = rules.resolveTurn(session.match, [plan, opponent(session.match, 1, session.style)])
-    const resumed = openClubFixture(readClub(JSON.stringify(saveClubTurn(club, plan, played.match))))
+    const reply = session.opponent(session.match, 1)
+    const played = rules.resolveTurn(session.match, [plan, reply])
+    const resumed = openClubFixture(readClub(JSON.stringify(saveClubTurn(club, plan, played.match, undefined, reply))))
     assert.equal(resumed.match.rulesVersion, rules.PREVIOUS_RULES_VERSION)
     assert.deepEqual(resumed.match, played.match)
     assert.deepEqual(resumed.history[0].events, played.events)

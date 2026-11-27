@@ -114,7 +114,7 @@ test('a committed opponent plan and the starting athletic profiles are used afte
   assert.deepEqual(loaded.pending.opponentPlans, [[]])
 
   const legacy = beginClubFixture(createClub('basketball'))
-  delete legacy.pending.athletics
+  delete legacy.pending.start
   delete legacy.pending.opponentPlans
   assert.equal(basketball.athleteById(openClubFixture(legacy).match, '0-0').athletics, undefined)
 })
