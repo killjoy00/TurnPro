@@ -1,3 +1,4 @@
+import { creditFocus, FOCUS_XP, MATCH_FOCUSES, type FocusId } from './match-focus.ts'
 import * as basketball from './basketball.ts'
 import * as soccer from './soccer.ts'
 import * as hockey from './hockey.ts'
@@ -10,9 +11,9 @@ import { planTurn as soccerAI } from './soccer-opponent.ts'
 import { drawBasketball, drawFootball, drawHockey, drawSoccer } from './surfaces.ts'
 import { equip, equipSignature, learnSignature, profile, readClub, recruit, setStarter, specialize, train, trainTechnical, type Club } from './club.ts'
 import { beginClubFixture, openClubFixture, saveClubTurn } from './club-fixture.ts'
-import { specialtyRank } from './progression.ts'
+import { DRILLS, specialtyRank } from './progression.ts'
 import { mountClub } from './club-view.ts'
-import { teamNames, type MatchSnapshot, type PlanCommand } from './match.ts'
+import { teamNames, type MatchSnapshot, type PlanCommand, type TurnEvent } from './match.ts'
 import { installGamepad } from './gamepad.ts'
 import { installDisplaySettings } from './display-settings.ts'
 import { installPlaytest } from './playtest.ts'
@@ -183,7 +184,7 @@ function mountHockey(signal: AbortSignal, season?: SeasonMatch<hockey.Match, hoc
         const receiver = hockey.athleteById(match, order.target)
         return `~${Math.round(hockey.passChance(match, athlete, receiver))}% now · `
       }
-      if (order.kind === 'shoot' || order.kind === 'one-timer') {
+      if (order.kind === 'shoot' || order.kind === 'one-timer' || order.kind === 'walk-point') {
         const shot = hockey.previewShot(match, order, plan)
         if (order.kind === 'one-timer' && !shot.receivingPass) return 'Needs a pass · '
         return `${shot.screened ? 'Screen set · ' : ''}~${shot.goal}% goal${order.kind === 'one-timer' ? ' if received' : ' now'} · `
@@ -242,10 +243,11 @@ function mountFootball(signal: AbortSignal, season?: SeasonMatch<football.Match,
     label: football.commandLabel,
     stamina: order => football.ACTIONS[order.kind].stamina,
     preview(match, order, plan) {
+      if (order.kind === 'chip-release') return 'Partial protection and a short outlet · '
       if ('target' in order || order.kind === 'field-goal') {
         const reading = football.playEstimate(match, order, plan)
         return order.kind === 'field-goal' ? `~${reading.chance}% make · `
-          : `${order.kind === 'play-action' ? 'Targets run fits · ' : ''}~${reading.chance}% catch · ${reading.sack}% sack · ${reading.yards} yd · `
+          : `${order.kind === 'play-action' ? 'Targets run fits · ' : ''}~${reading.chance}% catch · ${Math.round(reading.sack)}% sack · ${reading.yards} yd · `
       }
       if (order.kind === 'inside' || order.kind === 'sweep-left' || order.kind === 'sweep-right') {
         return `~${football.playEstimate(match, order, plan).yards} yd base · `
@@ -386,29 +388,39 @@ function showQuick(resetDefense: boolean) {
   else mountGame(basketballDefense(defense.value as DefenseStyle), route.signal)
 }
 
-function enterFixture() {
+function enterFixture(focus?: FocusId) {
   if (!club) return
-  const active = club.pending ? club : beginClubFixture(club)
+  const active = club.pending ? club : beginClubFixture(club, focus)
   const session = openClubFixture(active)
   if (active !== club) updateClub(active)
   changeScreen('fixture')
   const saveTurn = (orders: readonly PlanCommand[], match: MatchSnapshot, formation: football.Formation | undefined,
-    opponent: readonly PlanCommand[]) => {
+    opponent: readonly PlanCommand[], events: readonly TurnEvent[]) => {
     const previous = club!
-    const next = saveClubTurn(previous, orders, match, formation, opponent)
+    const pendingFocus = previous.pending?.focus
+    const earned = pendingFocus && creditFocus(pendingFocus, events)
+    const next = saveClubTurn(previous, orders, match, formation, opponent, events)
     updateClub(next)
-    if (next.pending) return []
-    return next.roster.flatMap((athlete, index) => {
+    if (next.pending) return { milestones: [], focus: next.pending.focus }
+    let reward: string | undefined
+    const milestones = next.roster.flatMap((athlete, index) => {
+      const before = previous.roster[index]
+      if (earned?.athlete === profile(athlete.id).name) {
+        const { skill } = MATCH_FOCUSES[earned.id]
+        const trained = athlete.technical[session.sport][skill] > before.technical[session.sport][skill]
+        reward = `${earned.athlete} gained ${FOCUS_XP} XP${trained ? ` and +1 ${DRILLS[session.sport][skill].toLowerCase()}` : ''}.`
+      }
       const role = athlete.specialty
       const rank = specialtyRank(athlete.mastery[role])
-      return rank === specialtyRank(previous.roster[index].mastery[role])
-        ? [] : [`${profile(athlete.id).name} · ${role} · ${rank}`]
+      return rank === specialtyRank(before.mastery[role]) ? [] : [`${profile(athlete.id).name} · ${role} · ${rank}`]
     })
+    return { milestones, focus: earned, reward }
   }
-  if (session.sport === 'basketball') mountGame(basketballDefense(session.defense), route.signal, { ...session, saveTurn })
-  else if (session.sport === 'soccer') mountGame(soccerView, route.signal, { ...session, saveTurn })
-  else if (session.sport === 'hockey') mountHockey(route.signal, { ...session, saveTurn })
-  else if (session.sport === 'football') mountFootball(route.signal, { ...session, saveTurn })
+  const savedFocus = active.pending?.focus
+  if (session.sport === 'basketball') mountGame(basketballDefense(session.defense), route.signal, { ...session, saveTurn, focus: savedFocus })
+  else if (session.sport === 'soccer') mountGame(soccerView, route.signal, { ...session, saveTurn, focus: savedFocus })
+  else if (session.sport === 'hockey') mountHockey(route.signal, { ...session, saveTurn, focus: savedFocus })
+  else if (session.sport === 'football') mountFootball(route.signal, { ...session, saveTurn, focus: savedFocus })
   document.querySelector<HTMLButtonElement>('#lineup button[aria-pressed="true"]')?.focus()
 }
 
@@ -458,7 +470,7 @@ skipGuide.addEventListener('click', () => {
   dismissGuide()
   selector.focus()
 })
-resumeQuick.addEventListener('click', enterFixture)
+resumeQuick.addEventListener('click', () => enterFixture())
 document.getElementById('practice-tools')!.addEventListener('click', event => {
   if ((event.target as Element).closest('button')) dismissGuide()
 })

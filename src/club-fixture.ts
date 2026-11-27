@@ -1,3 +1,4 @@
+import { creditFocus, isFocusForSport, type FocusId } from './match-focus.ts'
 import * as basketball from './basketball.ts'
 import * as soccer from './soccer.ts'
 import * as hockey from './hockey.ts'
@@ -29,12 +30,13 @@ function applyLineup(lineup: AthleteBuild[], sport: 'basketball' | 'soccer', mat
   })
 }
 
-export function beginClubFixture(club: Club): Club {
+export function beginClubFixture(club: Club, focus?: FocusId): Club {
   const fixture = nextFixture(club)
   if (!fixture) throw new Error('This season is complete.')
+  if (focus !== undefined && !isFocusForSport(focus, fixture.sport)) throw new Error('Choose a focus for this sport.')
   const started = startFixture(club, RULES[fixture.sport])
   const athletics = club.lineups[fixture.sport].map(id => physicalProfile(clubAthlete(club, id)))
-  return { ...started, pending: { ...started.pending!, athletics, opponentPlans: [] } }
+  return { ...started, pending: { ...started.pending!, athletics, opponentPlans: [], ...(focus ? { focus: { id: focus } } : {}) } }
 }
 
 function replay<S extends MatchSnapshot & { rulesVersion: number }, C extends PlanCommand>(
@@ -51,6 +53,9 @@ function replay<S extends MatchSnapshot & { rulesVersion: number }, C extends Pl
     const next = resolve(match, [orders as C[], stored ?? fixedOpponent(match, 1)])
     history.push({ turn: match.turn, score: next.match.score, events: next.events })
     match = next.match
+  }
+  if (pending.focus && creditFocus({ id: pending.focus.id }, history.flatMap(turn => turn.events)).athlete !== pending.focus.athlete) {
+    throw new Error('The match focus does not match the saved plays.')
   }
   return { match, history }
 }
@@ -93,7 +98,8 @@ export function openClubFixture(club: Club):
 }
 
 export function saveClubTurn(
-  club: Club, orders: readonly PlanCommand[], match: MatchSnapshot, formation?: football.Formation, opponent?: readonly PlanCommand[],
+  club: Club, orders: readonly PlanCommand[], match: MatchSnapshot, formation?: football.Formation,
+  opponent?: readonly PlanCommand[], events?: readonly TurnEvent[],
 ): Club {
   const fixture = nextFixture(club)
   const pending = club.pending
@@ -101,6 +107,10 @@ export function saveClubTurn(
     throw new Error('The fixture changed before this turn could be saved.')
   }
   const next = { ...club, pending: { ...pending, turns: [...pending.turns, [...orders]] } }
+  if (pending.focus) {
+    if (!events) throw new Error('Resolved events are required to record a match focus.')
+    next.pending.focus = creditFocus(pending.focus, events)
+  }
   if (pending.opponentPlans !== undefined || opponent !== undefined) {
     next.pending.opponentPlans = [...(pending.opponentPlans ?? pending.turns.map(() => null)),
       opponent?.map(order => ({ ...order })) ?? null]

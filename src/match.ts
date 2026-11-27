@@ -1,6 +1,7 @@
 import type { Point } from './math.ts'
 import type { Athletics } from './athletics.ts'
 import type { Signature } from './athlete-abilities.ts'
+import type { FocusAchievement } from './match-focus.ts'
 
 export type Team = 0 | 1
 export const TEAMS = ['Comets', 'Forge'] as const
@@ -82,7 +83,7 @@ export type PlayCue =
       from: Point; to: Point; holder?: string }
   | { type: 'reset'; moves: readonly ResolvedMove[]; holder: string }
 
-export type TurnEvent = { cue?: PlayCue } & (
+export type TurnEvent = { cue?: PlayCue; achievement?: FocusAchievement } & (
   | { kind: EventKind; text: string }
   | { kind: 'rebound'; text: string; offensive: boolean }
 )

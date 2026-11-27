@@ -35,6 +35,8 @@ For a three-athlete combination, teach a Playmaker **One-touch relay** and pair 
 
 Before the following fixture, compare a targeted skill drill with general training or recovery. Reach six mastery in a specialty, switch the athlete's active specialty, and try their former passive in a sport where they have six XP.
 
+Choose a match focus before kickoff and try the other focus against a rival with a different strategy. Note whether the added aim changes who you start and which orders you queue. Reload after earning it, then check the field lesson on the final screen and the skill rank in the roster. Try Walk the point from a guarded lane and Chip and release against a blitz. Compare each with a wrist shot or full pass protection.
+
 ## Automated baseline and tuning
 
 Run `npm run simulate:playtest -- 500 20` for 500 seeded computer matches per sport and 20 seeded four-sport regular seasons per lineup policy. The club policies use the same recruit, fixtures, and seeds. Rotation swaps in the freshest available athlete when a slot permits it. The third policy also spends the weekly session on recovery when an upcoming starter can use it. An AI result can expose a balance issue. Human playtests establish whether the choices are clear, fair, and worth repeating.

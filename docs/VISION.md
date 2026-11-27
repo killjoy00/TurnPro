@@ -51,17 +51,28 @@ An athlete has an identity, physical profile, tendencies, strengths, fatigue, an
 
 Specialties establish each athlete's tradeoffs. Playmakers favor passing, Defenders favor pressure, and Finishers favor scoring. A fixture appearance earns one mastery point in the active specialty, or two if the athlete took at least three orders. General sport training earns three sport XP and one mastery point. Mastery travels across sports and stays with the athlete when they change specialties.
 
-At three mastery, an athlete with three XP in basketball or soccer can spend one weekly session learning their current specialty's signature. At six mastery, the athlete can carry that specialty's passive into other roles in sports where they have six XP. A learned signature stays available after switching roles. One passive and one signature slot make build choices matter before each fixture.
+At three mastery and three XP in a sport, an athlete can use one weekly session to learn a signature available to their current specialty in that sport. At six mastery, the athlete can carry that specialty's passive into other roles in sports where they have six XP. A learned signature stays available after switching roles. One passive and one signature slot make build choices matter before each fixture.
 
 | Signature | How to use it | Tradeoff |
 | --- | --- | --- |
 | One-touch relay | Learn as a Playmaker. Order the off-ball athlete to relay to a third teammate. A first pass triggers the relay, and a receiving Finisher can add a same-turn shot. | Each pass can fail. The relay takes an order and stamina, and only one relay can trigger per turn. |
 | Cut and finish | Learn as a Finisher. Queue the athlete's off-ball cut and order a teammate's pass. A reception in shooting range triggers a shot on the same turn. | Costs more stamina than a standard run or cut. The combination needs a second order and a completed pass. |
 | Jump the lane | Learn as a Defender. Leave the athlete unassigned near a likely passing lane so they can step into it after the pass is committed. | The reaction spends eight stamina and replaces recovery. Lofted soccer crosses and switches bypass it. |
+| Walk the point | A hockey Playmaker carrying near the offensive blue line can move left or right ahead of the shot. | Uses more stamina than a wrist shot. The preferred lane depends on pressure and the position of the screen. |
+| Chip and release | A football Defender starting at tight end can slow the rush and become a short outlet. | The chip protects less than a dedicated block, and the route gives up depth. |
 
 Technical drills unlock at three XP in each sport. Use a weekly session to earn one XP and improve one passing, finishing, or defensive skill by one point, up to two extra points per skill. A point in basketball shooting improves shot attempts there. Football runs and catches develop independently even when the same athlete starts in both sports.
 
 The shared training choices include speed for movement and routes, strength for contact, endurance for unassigned recovery, and composure for accuracy under fatigue. Spend a weekly session to raise one attribute by one point, up to two points in each. Quick step extends ordered movement at 50 stamina or higher, and Anchor improves contact. Each unlock requires one natural or trained point in its matching attribute and three XP in the sport. Both use the sport's passive slot.
+
+Before a club fixture, choose either of the sport’s two match focuses or play without one. One focus can succeed per match. At the final whistle, the first athlete to complete it earns three additional sport XP and one point in the related technical skill if they are below the skill cap. The weekly training session remains available. The match shows the credited athlete, and a saved fixture verifies the credit by replaying the committed turns.
+
+| Sport | First focus | Second focus |
+| --- | --- | --- |
+| Basketball | Score after a pick-and-roll pass. | Win a defensive rebound with Protect paint. |
+| Soccer | Pass to a wide teammate with a switch of play. | Win a tackle with Press ball carrier. |
+| Hockey | Complete a bank outlet to a teammate showing at the boards. | Score a screened one-timer. |
+| American football | Convert a first down or touchdown on play-action. | Sack the quarterback with a blitzer. |
 
 Role proficiency tracks where an athlete actually plays. Three appearances in a role earn +1 to its associated rating, and six earn +2. A basketball point guard improves passing, a hockey goalie improves keeping, and football retains proficiency for each paired role. A reserve skater earns proficiency after taking the ice. Lineup choices show any bonus for that position.
 
@@ -132,7 +143,7 @@ The quick match compresses four quarters into 24 snaps. Teams swap ends at halft
 
 The four-sport season has 12 regular fixtures over six weeks. Each rival plays the club in all four sports. Each week, choose one athlete to practice a sport for three XP, study film for one permanent awareness point, or recover up to 28 fatigue. Film training adds up to two awareness points per athlete and helps passing in each sport. Individual sport XP improves technical ratings in that sport. One recruit can fill different roles across sports. Shorter single-sport and basketball-and-soccer seasons are also available.
 
-Hockey starts five skaters and a goalie, with a named reserve line. Reserve skaters earn match XP after taking the ice. Football assigns 11 players to paired offensive and defensive roles, so a quarterback who spends stamina on a drive brings the same energy into the next defensive snap. XP, fatigue, and equipped abilities carry between seasons. Specialty passives require six sport XP and either the matching specialty or mastery of that specialty. Basketball and soccer also equip learned signatures. Second wind unlocks at five total XP across sports and improves in-match recovery on unassigned turns. Saves from earlier versions migrate with their existing results and in-progress fixtures.
+Hockey starts five skaters and a goalie, with a named reserve line. Reserve skaters earn match XP after taking the ice. Football assigns 11 players to paired offensive and defensive roles, so a quarterback who spends stamina on a drive brings the same energy into the next defensive snap. XP, fatigue, and equipped abilities carry between seasons. Specialty passives require six sport XP and either the matching specialty or mastery of that specialty. Each sport offers its own learnable signatures. Second wind unlocks at five total XP across sports and improves in-match recovery on unassigned turns. Saves from earlier versions migrate with their existing results and in-progress fixtures.
 
 The same solo build runs as offline HTML and as a packaged Windows or Linux desktop app. The desktop build uses a stable local origin for saves. Guided practice gives players a checklist for coordinated turns, and controller settings let players remap the game’s action buttons. The base assignment overlay explains what an uncommanded athlete will try to do and previews default movement where the engine models it.
 

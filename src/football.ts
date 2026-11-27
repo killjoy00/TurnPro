@@ -1,3 +1,4 @@
+import { focusAchievement, type FocusAchievement } from './match-focus.ts'
 import { contactBonus, fatiguePenalty, quickStep, recoveryBonus } from './athletics.ts'
 import { clamp, seededRandom, type Point } from './math.ts'
 import {
@@ -66,7 +67,7 @@ export type Play =
   | { athlete: string; kind: 'quick-pass' | 'deep-pass' | 'play-action'; target: string }
 export type Support = {
   athlete: string
-  kind: 'slant' | 'go' | 'run-block' | 'protect' | 'blitz' | 'fill' | 'cover-short' | 'cover-deep' | 'rush-kick'
+  kind: 'slant' | 'go' | 'run-block' | 'protect' | 'chip-release' | 'blitz' | 'fill' | 'cover-short' | 'cover-deep' | 'rush-kick'
 }
 export type Command = Play | Support
 
@@ -83,6 +84,7 @@ export const ACTIONS = {
   go: { label: 'Run a go route', stamina: 12 },
   'run-block': { label: 'Lead the run block', stamina: 8 },
   protect: { label: 'Pass protect', stamina: 8 },
+  'chip-release': { label: 'Chip and release', stamina: 12 },
   blitz: { label: 'Blitz the quarterback', stamina: 12 },
   fill: { label: 'Fill the run gap', stamina: 8 },
   'cover-short': { label: 'Jump short routes', stamina: 8 },
@@ -213,6 +215,7 @@ export function legalCommands(match: Match, id: string): Command[] {
       options = [{ athlete: id, kind: 'run-block' }, { athlete: id, kind: 'protect' }]
     } else {
       options = [{ athlete: id, kind: 'slant' }, { athlete: id, kind: 'go' }]
+      if (player.slot === 10 && player.signature === 'chip-release') options.push({ athlete: id, kind: 'chip-release' })
     }
   } else if (player.slot < 7) {
     options = [{ athlete: id, kind: 'blitz' }, { athlete: id, kind: 'fill' }]
@@ -249,7 +252,7 @@ function laneFor(kind: Play['kind']): number {
 }
 
 function routeReach(kind: Play['kind'], route: Command['kind'] | undefined, receiver: Player): number {
-  const base = kind === 'deep-pass' ? (route === 'go' ? 29 : route === 'slant' ? 19 : 22)
+  const base = route === 'chip-release' ? 5 : kind === 'deep-pass' ? (route === 'go' ? 29 : route === 'slant' ? 19 : 22)
     : kind === 'play-action' ? (route === 'slant' ? 17 : route === 'go' ? 11 : 13)
       : (route === 'slant' ? 11 : route === 'go' ? 6 : 8)
   return base + (receiver.athletics?.speed ?? 0) + (quickStep(receiver, Boolean(route)) ? 2 : 0)
@@ -266,6 +269,8 @@ export function commandTarget(match: Match, order: Command, plan: readonly Comma
   switch (order.kind) {
     case 'inside': case 'sweep-left': case 'sweep-right':
       return orient(match, Math.min(103, match.yard + 8), laneFor(order.kind))
+    case 'chip-release':
+      return orient(match, Math.min(104, match.yard + routeReach('quick-pass', order.kind, player)), formationLane(match, OFFENSE[player.slot][5]))
     case 'slant': case 'go':
       return orient(match, Math.min(104, match.yard + routeReach(order.kind === 'go' ? 'deep-pass' : 'quick-pass', order.kind, player)),
         order.kind === 'slant' ? (formationLane(match, OFFENSE[player.slot][5]) + 27) / 2 : formationLane(match, OFFENSE[player.slot][5]))
@@ -283,6 +288,7 @@ export function playEstimate(match: Match, play: Play, offense: readonly Command
   const count = (orders: readonly Command[], kind: Command['kind']) => orders.filter(order => order.kind === kind).length
   const rush = count(defense, 'blitz')
   const blocks = count(offense, 'protect')
+  const chips = count(offense, 'chip-release')
   if ('target' in play) {
     const receiver = findAthlete(match.athletes, play.target)
     const passer = findAthlete(match.athletes, match.holder)
@@ -293,13 +299,14 @@ export function playEstimate(match: Match, play: Play, offense: readonly Command
     const deception = Math.min(runFits, 2) * 8
       + (runFits > 0 && count(offense, 'run-block') > 0 ? 5 : 0)
     const lane = formationLane(match, OFFENSE[receiver.slot][5])
-    const coverage = defense.filter(order => order.kind === (deep || fake ? 'cover-deep' : 'cover-short')).reduce((sum, order) => {
+    const outlet = route === 'chip-release'
+    const coverage = defense.filter(order => order.kind === (!outlet && (deep || fake) ? 'cover-deep' : 'cover-short')).reduce((sum, order) => {
       const defender = findAthlete(match.athletes, order.athlete)
       const technique = defender.technique === 'read-play' ? 0.4 : 0
       return sum + (Math.abs(DEFENSE[defender.slot][5] - lane) <= 17 ? 1 : 0.5) + (defender.defense ?? 0) * 0.1 + technique
     }, 0)
-    const pressure = Math.max(0, rush + (deep || fake ? 1 : 0) - blocks)
-    const fit = deep ? route === 'go' : route === 'slant'
+    const pressure = Math.max(0, rush + (deep || fake ? 1 : 0) - blocks - chips * 0.6)
+    const fit = deep ? route === 'go' : route === 'slant' || (!fake && outlet)
     const fatigue = Math.max(fatiguePenalty(receiver, 70, 0.32), fatiguePenalty(passer, 70, 0.32))
     const talent = ((passer.passing ?? 7) - 7) * 2 + ((passer.awareness ?? 7) - 7) * 1.7 + ((receiver.finishing ?? 7) - 7) * 1.5
     const matchup = (coverage > 0 && passer.technique === 'thread-pass' ? 7 : 0)
@@ -309,7 +316,7 @@ export function playEstimate(match: Match, play: Play, offense: readonly Command
         + FORMATIONS[match.formation ?? 'balanced'].pass, 20, 94)),
       yards: routeReach(play.kind, route, receiver), sack: clamp((deep || fake ? 7 : 3) + pressure * 7 - blocks * 2, 2, 35),
       pick: clamp((deep ? 15 : fake ? 11 : 7) + coverage * 14 + pressure * 5, 4, 52),
-      factors: [fit ? 'route matched' : '', blocks ? 'pass protection' : '', match.formation ? FORMATIONS[match.formation].name + ' spacing' : '',
+      factors: [fit ? 'route matched' : '', blocks ? 'pass protection' : '', chips ? 'tight end chips the rush' : '', outlet ? 'short outlet' : '', match.formation ? FORMATIONS[match.formation].name + ' spacing' : '',
         runFits ? `run fake draws ${runFits} ${runFits === 1 ? 'defender' : 'defenders'}` : '', rush ? `${rush} ${rush === 1 ? 'blitzer' : 'blitzers'}` : '', coverage ? 'defender coverage' : '', fatigue > 0 ? 'fatigue' : ''].filter(Boolean),
     }
   }
@@ -348,7 +355,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   const random = seededRandom(match.randomState)
   const roll = () => random.next() * 100
   const events: TurnEvent[] = revealPlans(match, plans, commandLabel)
-  const emit = (kind: EventKind, text: string) => events.push({ kind, text })
+  const emit = (kind: EventKind, text: string, achievement?: FocusAchievement) =>
+    events.push({ kind, text, ...(achievement ? { achievement } : {}) })
   if (match.formation) emit('plan', `${names[attack]} line up in ${FORMATIONS[match.formation].name}.`)
   if (!plans[attack].some(order => order.athlete === match.holder)) {
     emit('plan', `${names[attack]} snap their base inside handoff.`)
@@ -428,11 +436,16 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     if (roll() < estimate.sack) {
       const yards = 4 + Math.floor(roll() * 0.05)
       const pressure = match.rulesVersion !== PREVIOUS_RULES_VERSION ? ` (${estimate.sack}% sack chance${factors})` : ''
-      emit('ball', `${quarterback.name} is sacked for a loss of ${yards} yards${pressure}.`)
+      const blitzer = plans[defending].find(order => order.kind === 'blitz')
+      emit('ball', `${quarterback.name} is sacked for a loss of ${yards} yards${pressure}.`,
+        blitzer ? focusAchievement('blitz-sack', findAthlete(match.athletes, blitzer.athlete)) : undefined)
       advance(-yards)
     } else if (roll() < estimate.chance) {
       const yards = Math.min(100 - match.yard, Math.max(1, estimate.yards + Math.floor(roll() * 0.07) - 3))
-      emit('ball', `${quarterback.name} finds ${receiver.name} for ${yards} yards (${completion}).`)
+      const spot = match.yard + yards
+      emit('ball', `${quarterback.name} finds ${receiver.name} for ${yards} yards (${completion}).`,
+        play.kind === 'play-action' && (spot >= match.sticks || spot >= 100)
+          ? focusAchievement('fake-conversion', quarterback) : undefined)
       advance(yards)
     } else if (roll() < estimate.pick) {
       const spot = Math.min(100, match.yard + estimate.yards)

@@ -1,3 +1,4 @@
+import { FOCUS_XP, MATCH_FOCUSES, type MatchFocus } from './match-focus.ts'
 import {
   findAthlete, teamNames,
   type AthleteSnapshot, type BaseAssignment, type MatchSnapshot, type PlanCommand, type Plans, type Team, type TurnEvent,
@@ -68,10 +69,18 @@ interface PracticeStep {
   target?: string | number
 }
 
+export interface FixtureFeedback {
+  milestones: readonly string[]
+  focus?: MatchFocus
+  reward?: string
+}
+
 export interface SeasonMatch<S extends MatchSnapshot, C extends PlanCommand> {
   match: S
   history: LoggedTurn[]
-  saveTurn(orders: readonly C[], match: S, formation: Formation | undefined, opponent: readonly C[]): readonly string[]
+  focus?: MatchFocus
+  saveTurn(orders: readonly C[], match: S, formation: Formation | undefined, opponent: readonly C[],
+    events: readonly TurnEvent[]): FixtureFeedback
 }
 
 export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
@@ -95,7 +104,8 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   let steps: readonly PracticeStep[] = []
   let coached = false
   let guidedMatch = false
-  let masteryMilestones: readonly string[] = []
+  let feedback: FixtureFeedback = { milestones: [], focus: season?.focus }
+  const focusPanel = element('match-focus')
   let guidedStep: PracticeStep | undefined
   const matchesStep = (order: C, step: PracticeStep) =>
     order.athlete === step.athlete && order.kind === step.kind && order.target === step.target
@@ -240,6 +250,16 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   }
 
   function renderPlan() {
+    const focus = feedback.focus
+    focusPanel.hidden = !focus
+    focusPanel.classList.toggle('focus-earned', Boolean(focus?.athlete))
+    if (focus) {
+      const status = feedback.reward ?? (focus.athlete
+        ? `${focus.athlete} earned ${FOCUS_XP} XP when the fixture ends.`
+        : match.turn > sport.turnLimit ? 'Focus incomplete.' : MATCH_FOCUSES[focus.id].instruction)
+      const text = `${MATCH_FOCUSES[focus.id].label} · ${status}`
+      if (focusPanel.textContent !== text) focusPanel.textContent = text
+    }
     if (sport.formation) {
       const activeFormation = sport.formation.current(match)
       formationPanel.hidden = !activeFormation || match.turn > sport.turnLimit || Boolean(steps.length)
@@ -261,9 +281,9 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
       checklist.hidden = true
       actions.innerHTML = season
         ? `<p class="instructions">Fixture recorded. Return to the club to prepare for the next match.</p>
-          ${masteryMilestones.length ? `<details class="technical-options">
-          <summary>Mastery milestones · ${masteryMilestones.length}</summary><ul>
-          ${masteryMilestones.map(milestone => `<li>${milestone}</li>`).join('')}</ul></details>` : ''}`
+          ${feedback.milestones.length ? `<details class="technical-options">
+          <summary>Mastery milestones · ${feedback.milestones.length}</summary><ul>
+          ${feedback.milestones.map(milestone => `<li>${milestone}</li>`).join('')}</ul></details>` : ''}`
         : guidedMatch ? '<div class="guided-result"><p class="instructions">Match complete. Start a club season to train athletes and play fixtures that count toward the league.</p><button type="button" class="top-action" data-guided-club>Open club season</button></div>'
           : '<p class="instructions">Review the play-by-play or start a new match.</p>'
       commit.disabled = true
@@ -406,7 +426,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     const practicing = steps.length > 0
     const opponent = sport.opponent(match, 1)
     const resolution = sport.resolveTurn(match, [plan, opponent])
-    masteryMilestones = season?.saveTurn(plan, resolution.match, sport.formation?.current(match), opponent) ?? []
+    if (season) feedback = season.saveTurn(plan, resolution.match, sport.formation?.current(match), opponent, resolution.events)
     const focusWasInMatch = element('match-screen').contains(document.activeElement)
     if (!motion.matches && resolution.events.some(event => event.cue && event.cue.type !== 'plan')) {
       playback = new AbortController()

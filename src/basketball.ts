@@ -1,3 +1,4 @@
+import { focusAchievement, type FocusAchievement } from './match-focus.ts'
 import { laneReaction, LANE_REACTION_COST } from './athlete-abilities.ts'
 import { contactBonus, fatiguePenalty, movementMultiplier, recoveryBonus } from './athletics.ts'
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
@@ -312,7 +313,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   const next = structuredClone(match)
   const random = seededRandom(match.randomState)
   const events = revealPlans(match, plans, commandLabel)
-  const emit = (kind: EventKind, text: string, cue?: PlayCue) => events.push({ kind, text, cue })
+  const emit = (kind: EventKind, text: string, cue?: PlayCue, achievement?: FocusAchievement) =>
+    events.push({ kind, text, cue, ...(achievement ? { achievement } : {}) })
   const offense = possessionTeam(match)
   const defense = otherTeam(offense)
   const holder = athleteById(next, match.holder)
@@ -444,7 +446,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       const order = nextOrder?.kind
       if (rolls.has(receiver.id) && distance(receiver.position, COURT.hoop) <= 15) {
         emit('ball', `${receiver.name} catches on the roll and shoots.`)
-        takeShot(receiver)
+        takeShot(receiver, true)
       } else if (order === 'cut-and-finish' && distance(receiver.position, COURT.hoop) > 34) {
         emit('ball', `${receiver.name} catches outside shooting range and holds the ball.`)
       } else if (order === 'catch-shoot' || order === 'cut-and-finish') {
@@ -465,13 +467,14 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     }
   }
 
-  function takeShot(shooter: Athlete) {
+  function takeShot(shooter: Athlete, onRoll = false) {
     const shot = shotEstimate(next, shooter, screened)
     const detail = `${shot.chance}% chance, ${Math.round(shot.range)} ft, ${shot.pressure ? 'contested' : 'open'}`
     const flight: PlayCue = { type: 'ball', action: 'shot', from: shooter.position, to: COURT.hoop }
     if (random.next() * 100 < shot.chance) {
       next.score[offense] += shot.points
-      emit('score', `${shooter.name} scores ${shot.points} (${detail}).`, flight)
+      emit('score', `${shooter.name} scores ${shot.points} (${detail}).`, flight,
+        onRoll ? focusAchievement('roll-basket', shooter) : undefined)
       changePossession('After the basket,')
       return
     }
@@ -491,6 +494,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       const offensive = athlete.team === offense
       events.push({
         kind: 'rebound', offensive,
+        ...(!offensive && commands.get(athlete.id)?.kind === 'protect'
+          ? { achievement: focusAchievement('defensive-glass', athlete) } : {}),
         cue: { type: 'ball', action: 'rebound', from: COURT.hoop, to: athlete.position, holder: athlete.id },
         text: `${athlete.name} takes the ${offensive ? 'offensive' : 'defensive'} rebound.`,
       })
