@@ -1,4 +1,5 @@
 import { FOCUS_XP, isFocusForSport, MATCH_FOCUSES, type MatchFocus } from './match-focus.ts'
+import { fixtureAthleteName, validFixtureStart, type FixtureStart } from './fixture-start.ts'
 import { clamp } from './math.ts'
 import { SIGNATURES, SIGNATURE_XP, signatureAvailable, type Signature } from './athlete-abilities.ts'
 import type { Appearance, AthleteBuild, PlanCommand, Technique } from './match.ts'
@@ -142,6 +143,7 @@ export interface Club extends SeasonRecord {
     formations?: (Formation | null)[]
     opponentPlans?: (PlanCommand[] | null)[]
     athletics?: Athletics[]
+    start?: FixtureStart
     focus?: MatchFocus
   } | null
 }
@@ -364,8 +366,8 @@ export function ratings(player: ClubAthlete, sport: Sport, slot?: number, athlet
     passing: clamp(4 + skill + pass, 2, 12) + drills.passing, finishing: clamp(4 + skill + finish, 2, 12) + drills.finishing,
     defense: (player.specialty === 'Defender' ? 2 : 0) + (sport === 'hockey' || sport === 'football' ? trained : 0) + drills.defense,
     keeping: entry.keeper ? 6 + skill : 0,
-    technique: player.equipped[sport] ?? undefined,
   }
+  if (player.equipped[sport]) result.technique = player.equipped[sport]
   if (player.signature[sport]) result.signature = player.signature[sport]
   if (Object.values(athletics).some(Boolean)) result.athletics = { ...athletics }
   if (slot !== undefined) {
@@ -389,7 +391,7 @@ export function settleFixture(club: Club, score: Score, players: readonly { team
   const sport = fixture.sport
   const focus = pending.focus
   const skill = focus ? MATCH_FOCUSES[focus.id].skill : undefined
-  const starters = club.lineups[sport]
+  const starters = pending.start?.starters ?? club.lineups[sport]
   const onField = players.filter(player => player.team === 0)
   const played = appearances ?? onField.map(({ stamina }, slot) => ({
     slot, stamina, orders: pending.turns.filter(turn => turn.some(order => order.athlete === `0-${slot}`)).length,
@@ -401,7 +403,8 @@ export function settleFixture(club: Club, score: Score, players: readonly { team
     const role = roleName(fixture.sport, appearance.slot)
     const starts = player.roleStarts[fixture.sport]
     const experience = appearance.orders >= 3 ? 2 : 1
-    const rewarded = focus?.athlete === profile(player.id).name
+    const savedName = pending.start && fixtureAthleteName(pending.start, appearance.slot)
+    const rewarded = focus?.athlete === (savedName ?? profile(player.id).name)
     const technical = rewarded && skill ? { ...player.technical,
       [sport]: { ...player.technical[sport], [skill]: Math.min(MAX_TECHNICAL_RANK, player.technical[sport][skill] + 1) },
     } : player.technical
@@ -582,6 +585,7 @@ export function readClub(raw: string): Club {
   }
   if (club.pending !== null) {
     const upcoming = nextFixture(club)
+    const starting = club.pending?.start
     if (!record(club.pending) || !upcoming || !Array.isArray(club.pending.turns)
       || club.pending.turns.length >= TURN_LIMITS[upcoming.sport]
       || (club.pending.formations !== undefined && (upcoming.sport !== 'football' || !Array.isArray(club.pending.formations)
@@ -594,10 +598,12 @@ export function readClub(raw: string): Club {
         || club.pending.athletics.length !== ROLES[upcoming.sport].length
         || club.pending.athletics.some(traits => !record(traits) || Object.keys(ATHLETIC_TRAITS)
           .some(trait => !integer(traits[trait as AthleticTrait], 0, MAX_TRAIT + 1)))))
+      || (starting !== undefined && (!validFixtureStart(starting, upcoming, club.pending.rules, ids)
+        || !club.pending.opponentPlans || club.pending.opponentPlans.some(plan => plan === null)))
       || (club.pending.focus !== undefined && (!record(club.pending.focus)
         || !isFocusForSport(club.pending.focus.id, upcoming.sport)
-        || (club.pending.focus.athlete !== undefined && !club.lineups[upcoming.sport]
-          .some(id => profile(id).name === club.pending!.focus!.athlete))))
+        || (club.pending.focus.athlete !== undefined && !(starting?.starters ?? club.lineups[upcoming.sport])
+          .some((id, slot) => (starting ? fixtureAthleteName(starting, slot) : profile(id).name) === club.pending!.focus!.athlete))))
       || club.pending.turns.some(plan => !validPlan(plan))) {
       throw new Error('The current fixture in this save is invalid.')
     }

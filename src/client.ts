@@ -1,3 +1,4 @@
+import { fixtureAthleteName, type VersionedMatch } from './fixture-start.ts'
 import { creditFocus, FOCUS_XP, MATCH_FOCUSES, type FocusId } from './match-focus.ts'
 import * as basketball from './basketball.ts'
 import * as soccer from './soccer.ts'
@@ -10,7 +11,7 @@ import { DEFENSE_NAMES, planTurn as basketballAI, type DefenseStyle } from './op
 import { planTurn as soccerAI } from './soccer-opponent.ts'
 import { drawBasketball, drawFootball, drawHockey, drawSoccer } from './surfaces.ts'
 import { equip, equipSignature, learnSignature, profile, readClub, recruit, setStarter, specialize, train, trainTechnical, type Club } from './club.ts'
-import { beginClubFixture, openClubFixture, saveClubTurn } from './club-fixture.ts'
+import { beginClubFixture, openClubFixture, saveClubTurn, upgradeClubFixture } from './club-fixture.ts'
 import { DRILLS, specialtyRank } from './progression.ts'
 import { mountClub } from './club-view.ts'
 import { teamNames, type MatchSnapshot, type PlanCommand, type TurnEvent } from './match.ts'
@@ -302,14 +303,20 @@ function warn(message: string) {
 }
 
 function verifyClub(state: Club) {
-  if (state.pending) openClubFixture(state)
-  return state
+  const upgraded = upgradeClubFixture(state)
+  if (upgraded === state && state.pending) openClubFixture(state)
+  return upgraded
 }
 
 try {
   lastSaved = localStorage.getItem(key)
   const saved = lastSaved ?? localStorage.getItem(previousKey)
-  if (saved !== null) club = verifyClub(readClub(saved))
+  if (saved !== null) {
+    const state = readClub(saved)
+    const verified = verifyClub(state)
+    if (verified !== state) updateClub(verified)
+    else club = verified
+  }
 } catch {
   warn('Could not open the local club save. You can import an earlier export from the club screen.')
 }
@@ -390,14 +397,15 @@ function showQuick(resetDefense: boolean) {
 
 function enterFixture(focus?: FocusId) {
   if (!club) return
-  const active = club.pending ? club : beginClubFixture(club, focus)
+  const active = club.pending ? upgradeClubFixture(club) : beginClubFixture(club, focus)
   const session = openClubFixture(active)
   if (active !== club) updateClub(active)
   changeScreen('fixture')
-  const saveTurn = (orders: readonly PlanCommand[], match: MatchSnapshot, formation: football.Formation | undefined,
+  const saveTurn = (orders: readonly PlanCommand[], match: VersionedMatch, formation: football.Formation | undefined,
     opponent: readonly PlanCommand[], events: readonly TurnEvent[]) => {
     const previous = club!
     const pendingFocus = previous.pending?.focus
+    const starting = previous.pending?.start
     const earned = pendingFocus && creditFocus(pendingFocus, events)
     const next = saveClubTurn(previous, orders, match, formation, opponent, events)
     updateClub(next)
@@ -405,7 +413,8 @@ function enterFixture(focus?: FocusId) {
     let reward: string | undefined
     const milestones = next.roster.flatMap((athlete, index) => {
       const before = previous.roster[index]
-      if (earned?.athlete === profile(athlete.id).name) {
+      const startingSlot = starting?.starters.indexOf(athlete.id) ?? -1
+      if (starting && startingSlot !== -1 && earned && earned.athlete === fixtureAthleteName(starting, startingSlot)) {
         const { skill } = MATCH_FOCUSES[earned.id]
         const trained = athlete.technical[session.sport][skill] > before.technical[session.sport][skill]
         reward = `${earned.athlete} gained ${FOCUS_XP} XP${trained ? ` and +1 ${DRILLS[session.sport][skill].toLowerCase()}` : ''}.`

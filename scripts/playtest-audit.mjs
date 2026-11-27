@@ -85,8 +85,9 @@ const career = ['stock', 'rotation', 'rotation + recovery'].map(policy => {
       }
       while (!rules.finished(match)) {
         const plan = rules.plan(match, 0)
-        match = rules.resolveTurn(match, [plan, rules.plan(match, 1, session.defense ?? session.style)]).match
-        club = saveClubTurn(club, plan, match)
+        const opponent = session.opponent(match, 1)
+        match = rules.resolveTurn(match, [plan, opponent]).match
+        club = saveClubTurn(club, plan, match, undefined, opponent)
       }
     }
   }

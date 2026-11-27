@@ -40,8 +40,9 @@ test('mixed finals combine basketball and soccer match points and award a tied s
 
   const active = beginClubFixture(club)
   const session = openClubFixture(active)
-  const turn = basketball.resolveTurn(session.match, [[], planTurn(session.match, 1, session.defense)])
-  const saved = saveClubTurn(active, [], turn.match)
+  const opponent = planTurn(session.match, 1, session.defense)
+  const turn = basketball.resolveTurn(session.match, [[], opponent])
+  const saved = saveClubTurn(active, [], turn.match, undefined, opponent)
   assert.deepEqual(openClubFixture(readClub(JSON.stringify(saved))).match, turn.match)
   const first = settleFixture(active, [2, 1], turn.match.athletes)
   assert.equal(nextFixture(first).sport, 'soccer')

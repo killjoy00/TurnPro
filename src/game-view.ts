@@ -79,6 +79,7 @@ export interface SeasonMatch<S extends MatchSnapshot, C extends PlanCommand> {
   match: S
   history: LoggedTurn[]
   focus?: MatchFocus
+  opponent(match: S, team: Team): C[]
   saveTurn(orders: readonly C[], match: S, formation: Formation | undefined, opponent: readonly C[],
     events: readonly TurnEvent[]): FixtureFeedback
 }
@@ -424,7 +425,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     if (playback || match.turn > sport.turnLimit || commit.disabled) return
     const turn = match.turn
     const practicing = steps.length > 0
-    const opponent = sport.opponent(match, 1)
+    const opponent = (season?.opponent ?? sport.opponent)(match, 1)
     const resolution = sport.resolveTurn(match, [plan, opponent])
     if (season) feedback = season.saveTurn(plan, resolution.match, sport.formation?.current(match), opponent, resolution.events)
     const focusWasInMatch = element('match-screen').contains(document.activeElement)

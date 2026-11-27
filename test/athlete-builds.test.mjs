@@ -101,8 +101,9 @@ test('football club saves replay a changed formation and its public counterplay'
   const club = beginClubFixture(createClub('football'))
   const session = openClubFixture(club)
   const set = football.setFormation(session.match, 'spread')
-  const result = football.resolveTurn(set, [[], footballAI(set, 1, session.style)])
-  const saved = readClub(JSON.stringify(saveClubTurn(club, [], result.match, 'spread')))
+  const opponent = footballAI(set, 1, session.style)
+  const result = football.resolveTurn(set, [[], opponent])
+  const saved = readClub(JSON.stringify(saveClubTurn(club, [], result.match, 'spread', opponent)))
   const resumed = openClubFixture(saved)
   assert.deepEqual(saved.pending.formations, ['spread'])
   assert.deepEqual(resumed.match, result.match)
@@ -116,7 +117,7 @@ test('v4 club saves initialize new training and positions with their fixture int
   const old = { ...original, version: 4, roster: original.roster.map(({ athletics, roleStarts, ...player }) => player) }
   const migrated = readClub(JSON.stringify(old))
   assert.deepEqual(migrated, original)
-  assert.deepEqual(openClubFixture(migrated), openClubFixture(original))
+  assert.deepEqual(openClubFixture(migrated).match, openClubFixture(original).match)
 })
 
 test('the same athlete can apprentice in two specialties and swap learned signatures beside a passive', () => {
@@ -212,12 +213,14 @@ test('an unassigned lane reader changes a completed pass into a turnover at a st
 test('v5 pending fixtures retain prior ratings, plans, and outcomes after signature migration', () => {
   const club = beginClubFixture(createClub('basketball'))
   const session = openClubFixture(club)
-  const win = basketball.resolveTurn(session.match, [[], basketballAI(session.match, 1, session.defense)])
-  const saved = saveClubTurn(club, [], win.match)
+  const opponent = basketballAI(session.match, 1, session.defense)
+  const win = basketball.resolveTurn(session.match, [[], opponent])
+  const saved = saveClubTurn(club, [], win.match, undefined, opponent)
   const old = { ...saved, version: 5, roster: saved.roster.map(({ learned, signature, ...player }) => player) }
   const migrated = readClub(JSON.stringify(old))
   assert.deepEqual(migrated, saved)
-  assert.deepEqual(openClubFixture(migrated), openClubFixture(saved))
+  assert.deepEqual(openClubFixture(migrated).match, openClubFixture(saved).match)
+  assert.deepEqual(openClubFixture(migrated).history, openClubFixture(saved).history)
 })
 
 test('appearance experience follows the current specialty across sports and eventually makes a passive portable', () => {
@@ -304,8 +307,9 @@ test('v6 saves credit already learned signatures and preserve in-progress turns'
   let club = beginClubFixture(learnSignature(fresh, vale.id, 'basketball', 'cut-and-finish'))
   const session = openClubFixture(club)
   const orders = [{ athlete: '0-0', kind: 'pass', target: '0-1' }, { athlete: '0-1', kind: 'cut-and-finish', target: 0 }]
-  const played = basketball.resolveTurn(session.match, [orders, basketballAI(session.match, 1, session.defense)])
-  club = saveClubTurn(club, orders, played.match)
+  const opponent = basketballAI(session.match, 1, session.defense)
+  const played = basketball.resolveTurn(session.match, [orders, opponent])
+  club = saveClubTurn(club, orders, played.match, undefined, opponent)
   const old = { ...club, version: 6, roster: club.roster.map(({ mastery, technical, ...player }) => player) }
   const migrated = readClub(JSON.stringify(old))
   assert.deepEqual(migrated, club)
