@@ -1,3 +1,4 @@
+import { focusAchievement, type FocusAchievement } from './match-focus.ts'
 import { laneReaction, LANE_REACTION_COST } from './athlete-abilities.ts'
 import { contactBonus, fatiguePenalty, movementMultiplier, recoveryBonus } from './athletics.ts'
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
@@ -387,8 +388,9 @@ export function previewPass(match: Match, command: Pass, plan: readonly Command[
 
 function resolvePass(
   match: Match, initial: Match, holder: Footballer, command: Pass,
-  roll: () => number, emit: (kind: EventKind, text: string) => void,
+  roll: () => number, emit: (kind: EventKind, text: string, achievement?: FocusAchievement) => void,
   react: (passer: Footballer, reception: Point) => void,
+  showingWide = false,
 ): Footballer | undefined {
   const target = athleteById(match, command.target)
   if (startsOffside(initial, athleteById(initial, holder.id), athleteById(initial, target.id))) {
@@ -406,7 +408,8 @@ function resolvePass(
     target.position = reception
     match.holder = target.id
     const delivery = command.kind === 'switch-field' ? 'a switch of play' : 'a ' + ACTIONS[command.kind].label.toLowerCase()
-    emit('ball', `${holder.name} finds ${target.name} with ${delivery} (${detail}).`)
+    emit('ball', `${holder.name} finds ${target.name} with ${delivery} (${detail}).`,
+      command.kind === 'switch-field' && showingWide ? focusAchievement('wide-switch', holder) : undefined)
     return target
   }
   const defender = defenders[0] ?? nearBall(match, target, Infinity)[0]
@@ -425,7 +428,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   const random = seededRandom(match.randomState)
   const roll = () => random.next() * 100
   const events: TurnEvent[] = revealPlans(match, plans, commandLabel)
-  const emit = (kind: EventKind, text: string) => events.push({ kind, text })
+  const emit = (kind: EventKind, text: string, achievement?: FocusAchievement) =>
+    events.push({ kind, text, ...(achievement ? { achievement } : {}) })
   const commands = new Map(plans.flat().map(command => [command.athlete, command]))
   const originalHolder = athleteById(match, match.holder)
   const holder = athleteById(next, match.holder)
@@ -476,7 +480,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   if (ballCommand?.kind === 'shoot') {
     takeShot(holder)
   } else if (ballCommand && isPass(ballCommand)) {
-    let receiver = resolvePass(next, match, holder, ballCommand, roll, emit, react)
+    let receiver = resolvePass(next, match, holder, ballCommand, roll, emit, react,
+      commands.get(ballCommand.target)?.kind === 'show-wide')
     const nextOrder = receiver && commands.get(receiver.id)
     if (receiver && nextOrder?.kind === 'relay') {
       const target = athleteById(next, nextOrder.target)
@@ -504,7 +509,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
         + (challenger.defense ?? 0) * 3 + contact * 4, 15, 75)
       if (roll() < chance) {
         next.holder = challenger.id
-        emit('turnover', `${challenger.name} wins the ball from ${holder.name} (${Math.round(chance)}% tackle chance).`)
+        emit('turnover', `${challenger.name} wins the ball from ${holder.name} (${Math.round(chance)}% tackle chance).`,
+          focusAchievement('press-recovery', challenger))
       } else {
         emit('ball', `${holder.name} shields the ball from ${challenger.name}.`)
       }

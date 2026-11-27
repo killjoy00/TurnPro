@@ -1,9 +1,10 @@
+import { FOCUS_XP, isFocusForSport, MATCH_FOCUSES, type FocusId } from './match-focus.ts'
 import {
   availableProspects, baseSkill, canLearnSignature, canTrainTechnical, clubAthlete, createClub, development, keeperSlot, MAX_FILM_BONUS, nextFixture, nextSeason, profile, ratings, ROLES,
   roleName, roleProgress, SPECIALTIES, TECHNIQUES, unlocked, unlockRequirement,
   type Club, type SeasonMode, type Specialty, type Sport, type TrainingFocus,
 } from './club.ts'
-import { SIGNATURES, SIGNATURE_XP, supportsSignatures, type Signature } from './athlete-abilities.ts'
+import { SIGNATURES, SIGNATURE_XP, signatureAvailable, type Signature } from './athlete-abilities.ts'
 import { ATHLETIC_TRAITS, isAthleticTrait, MAX_TRAIT, type AthleticTrait } from './athletics.ts'
 import {
   DRILLS, MAX_MASTERY, MAX_TECHNICAL_RANK, SIGNATURE_MASTERY, SPECIALTY_NAMES, specialtyRank, TECHNICAL_PREREQUISITE,
@@ -19,7 +20,7 @@ import { leagueTable, rivalPair, rivalryRecords, RIVALS, schedule, seasonOutcome
 export interface ClubView {
   getClub(): Club | null
   update(club: Club): void
-  start(): void
+  start(focus?: FocusId): void
   recruit(id: string): void
   train(id: string, focus: TrainingFocus): void
   trainTechnical(id: string, sport: Sport, skill: TechnicalSkill): void
@@ -42,6 +43,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
   let athlete = 'reed'
   let message = ''
   let choosingSeason = false
+  let chosenFocus: FocusId | '' | undefined
   let lastDrillSport: Sport | undefined
 
   function render() {
@@ -110,12 +112,11 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       return `<label class="lineup-choice"><span>${label}</span><select data-slot="${slot}" aria-label="${label} starter, slot ${slot + 1}" ${editable ? '' : 'disabled'}>${choices}</select></label>`
     }).join('')
     function signatureChoices(sport: Sport) {
-      if (!supportsSignatures(sport)) return ''
       const equipped = player.signature[sport]
       const known = player.learned[sport]
       const options = known.map(key => `<option value="${key}" ${equipped === key ? 'selected' : ''}>
         ${SIGNATURES[key].label} · ${SIGNATURES[key].slot}</option>`).join('')
-      const courses = (Object.keys(SIGNATURES) as Signature[]).filter(key => !known.includes(key))
+      const courses = (Object.keys(SIGNATURES) as Signature[]).filter(key => signatureAvailable(key, sport) && !known.includes(key))
       const available = courses.filter(key => canTrain && allowedSports.includes(sport) && canLearnSignature(player, sport, key))
       const lessons = courses.map(key => {
         const ability = SIGNATURES[key]
@@ -214,11 +215,25 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       const record = results.map(([a, b]) => a > b ? 'W' : a === b ? 'D' : 'L').join('–')
       return `<li>Season ${index + 1} · ${mode === 'all' ? 'All four sports' : mode === 'both' ? 'Basketball &amp; soccer' : SPORT[mode]} · ${record} · ${completed[index]}</li>`
     }).join('')
+    const focusChoices = fixture ? (Object.keys(MATCH_FOCUSES) as FocusId[]).filter(id => isFocusForSport(id, fixture.sport)) : []
+    const selectedFocus = chosenFocus === '' || (chosenFocus && focusChoices.includes(chosenFocus)) ? chosenFocus : focusChoices[0]
+    const focusInfo = selectedFocus ? MATCH_FOCUSES[selectedFocus] : undefined
+    const savedFocus = club.pending?.focus
+    const focusPicker = editable ? `<div class="fixture-focus">
+      <label for="fixture-focus">Match focus</label>
+      <select id="fixture-focus"><option value="">No focus</option>
+        ${focusChoices.map(id => `<option value="${id}" ${id === selectedFocus ? 'selected' : ''}>${MATCH_FOCUSES[id].label}</option>`).join('')}
+      </select>
+      ${focusInfo ? `<p>${focusInfo.instruction} The athlete earns ${FOCUS_XP} XP and one point in
+        ${DRILLS[focusInfo.sport][focusInfo.skill].toLowerCase()} up to the skill cap when the fixture ends.</p>` : ''}
+    </div>` : savedFocus ? `<p class="muted">${MATCH_FOCUSES[savedFocus.id].label}
+      ${savedFocus.athlete ? ` · Completed by ${savedFocus.athlete}` : ''}</p>` : ''
     container.innerHTML = `<section class="club-hero"><h2>Comets club</h2>
       <p><b>Season ${club.season} · ${headline}</b>${opponent ? ` · ${opponent}` : ''}</p>
       ${outcome && outcome !== 'Finished' ? `<p class="league-outcome"><b>${outcome}</b>${rank ? ` · League rank ${rank}` : ''}</p>` : ''}
       <p class="season-record">${wins} wins · ${draws} draws · ${losses} losses · ${wins * 3 + draws} league points${titles ? ` · ${titles} ${titles === 1 ? 'title' : 'titles'}` : ''}</p>
       ${startingStamina.length ? `<p class="muted club-readiness">Next lineup · Avg stamina ${averageStamina} · ${tired} of ${startingStamina.length} below 65</p>` : ''}
+      ${focusPicker}
       <div class="club-actions">${fixture ? `<button class="primary" data-action="play">${club.pending ? 'Resume fixture' : 'Play fixture'}</button>`
         : '<button data-action="new">Start another season</button>'}</div>
     </section>
@@ -249,7 +264,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
           <progress aria-label="${role} mastery" value="${player.mastery[role]}" max="${MAX_MASTERY}"></progress>
           <small>${player.mastery[role]}/${MAX_MASTERY}${role === player.specialty ? ' · Active' : ''}</small>
         </li>`).join('')}</ul>
-        <p class="muted">Earn mastery in your active specialty through fixtures and general sport training. At ${SIGNATURE_MASTERY}, spend a session to learn a signature in basketball or soccer. At ${MAX_MASTERY}, keep using that specialty’s passive after switching roles, with 6 XP in the sport.</p>
+        <p class="muted">Earn mastery in your active specialty through fixtures and general sport training. At ${SIGNATURE_MASTERY}, spend a session to learn a signature for a sport. At ${MAX_MASTERY}, keep using that specialty’s passive after switching roles, with 6 XP in the sport.</p>
         <ul class="sport-stats">${stats}</ul>
         ${editable ? `<p class="muted">${canTrain ? 'One training session available this week.' : 'Training used this week.'}</p>
         <div class="club-actions">${allowedSports.map(sport => `<button data-train="${sport}" ${canTrain ? '' : 'disabled'}>Train ${SPORT[sport]}</button>`).join('')}
@@ -277,7 +292,8 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     if (!button) return
     const data = button.dataset
     if (data.action === 'play') {
-      controller.start()
+      const focus = container.querySelector<HTMLSelectElement>('#fixture-focus')?.value
+      controller.start(focus ? focus as FocusId : undefined)
       return
     }
     message = ''
@@ -341,6 +357,8 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         lineupSport = startingTab(controller.getClub())
         choosingSeason = false
         message = 'Club save loaded.'
+      } else if (input.id === 'fixture-focus') {
+        chosenFocus = input.value as FocusId | ''
       } else if (input.dataset.slot !== undefined) {
         controller.changeStarter(lineupSport, Number(input.dataset.slot), input.value)
       } else if (input.dataset.signature) {
@@ -354,6 +372,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       message = 'That change could not be applied. Check the save file or lineup.'
     }
     render()
+    if (input.id === 'fixture-focus') container.querySelector<HTMLElement>('#fixture-focus')?.focus()
     if (input.dataset.signature) container.querySelector<HTMLSelectElement>(`[data-signature="${input.dataset.signature}"]`)?.focus()
   }, { signal })
   render()

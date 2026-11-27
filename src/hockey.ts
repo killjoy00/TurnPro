@@ -1,3 +1,4 @@
+import { focusAchievement, type FocusAchievement } from './match-focus.ts'
 import { contactBonus, fatiguePenalty, movementMultiplier, recoveryBonus } from './athletics.ts'
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
 import {
@@ -51,10 +52,12 @@ export type Command =
   | { athlete: string; kind: 'pass'; target: string }
   | { athlete: string; kind: 'wall-outlet'; target: string }
   | { athlete: string; kind: 'skate'; target: number }
+  | { athlete: string; kind: 'walk-point'; target: 0 | 1 }
 
 export const ACTIONS = {
   carry: { label: 'Skate with the puck', stamina: 15 },
   shoot: { label: 'Wrist shot', stamina: 11 },
+  'walk-point': { label: 'Walk the point', stamina: 17 },
   screen: { label: 'Screen the goalie', stamina: 10 },
   'one-timer': { label: 'Ready one-timer', stamina: 12 },
   forecheck: { label: 'Forecheck', stamina: 13 },
@@ -194,6 +197,15 @@ export function legalCommands(match: Match, id: string): Command[] {
     if (player.slot < 5) {
       if (depth(match, player.team, player.position) < 91) options.push({ athlete: id, kind: 'carry' })
       if (distance(player.position, attackGoal(match, player.team)) <= 35) options.push({ athlete: id, kind: 'shoot' })
+      const zone = depth(match, player.team, player.position)
+      if (player.signature === 'walk-point' && zone >= 60 && zone <= 80) {
+        for (const target of [0, 1] as const) {
+          const arrival = pointShotPosition(match, player, target)
+          if (distance(player.position, arrival) >= 3 && distance(arrival, attackGoal(match, player.team)) <= 35) {
+            options.push({ athlete: id, kind: 'walk-point', target })
+          }
+        }
+      }
     }
     for (const teammate of match.athletes) {
       if (teammate.id === id || teammate.team !== player.team || teammate.slot >= 5) continue
@@ -222,6 +234,7 @@ export function legalCommands(match: Match, id: string): Command[] {
 
 export function commandLabel(match: Match, order: Command): string {
   if (order.kind === 'pass' || order.kind === 'wall-outlet') return `${ACTIONS[order.kind].label} ${athleteById(match, order.target).name}`
+  if (order.kind === 'walk-point') return `Walk the point ${order.target === 0 ? 'left' : 'right'} and shoot`
   if (order.kind === 'skate') return `Skate to ${LANES[order.target].toLowerCase()}`
   if (order.kind === 'change') return `Call line change to line ${2 - match.lines[athleteById(match, order.athlete).team]}`
   return ACTIONS[order.kind].label
@@ -237,6 +250,12 @@ function outletTarget(match: Match, athlete: Skater): Point {
   return orient(match, athlete.team, { x: Math.min(57, spot.x + 8), y: spot.y < MID ? 4 : RINK.height - 4 })
 }
 
+function pointShotPosition(match: Match, athlete: Skater, lane: 0 | 1): Point {
+  const x = Math.min(81, depth(match, athlete.team, athlete.position) + 4)
+  const target = orient(match, athlete.team, { x, y: MID + (lane === 0 ? -12 : 12) })
+  return stepToward(athlete.position, target, movementRange(athlete, true))
+}
+
 export function commandTarget(match: Match, order: Command): Point | undefined {
   const athlete = athleteById(match, order.athlete)
   const holder = athleteById(match, match.holder)
@@ -244,6 +263,7 @@ export function commandTarget(match: Match, order: Command): Point | undefined {
     case 'pass': return athleteById(match, order.target).position
     case 'wall-outlet': return bankPoint(athlete.position, athleteById(match, order.target).position)
     case 'show-outlet': return outletTarget(match, athlete)
+    case 'walk-point': return pointShotPosition(match, athlete, order.target)
     case 'skate': return orient(match, athlete.team, { x: Math.min(93, depth(match, athlete.team, athlete.position) + 19),
       y: [7, MID, 41][order.target] })
     case 'forecheck': return stepToward(holder.position, athlete.position, 2)
@@ -298,7 +318,8 @@ function screensGoal(match: Match, shooter: Skater, position: Point) {
 }
 
 export function previewShot(match: Match, command: Command, plan: readonly Command[]) {
-  const shooter = athleteById(match, command.athlete)
+  const player = athleteById(match, command.athlete)
+  const shooter = command.kind === 'walk-point' ? { ...player, position: pointShotPosition(match, player, command.target) } : player
   const oneTimer = command.kind === 'one-timer'
   const receivingPass = plan.some(order => order.athlete === match.holder && order.kind === 'pass' && order.target === shooter.id)
   const screened = plan.some(order => {
@@ -350,7 +371,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   const random = seededRandom(match.randomState)
   const roll = () => random.next() * 100
   const events: TurnEvent[] = revealPlans(match, plans, commandLabel)
-  const emit = (kind: EventKind, text: string) => events.push({ kind, text })
+  const emit = (kind: EventKind, text: string, achievement?: FocusAchievement) =>
+    events.push({ kind, text, ...(achievement ? { achievement } : {}) })
   const orders = new Map(plans.flat().map(order => [order.athlete, order]))
   const original = athleteById(match, match.holder)
 
@@ -364,6 +386,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     player.position = target && !passing && order?.kind !== 'shoot'
       ? stepToward(before.position, target, pace)
       : resting ? before.position : stepToward(before.position, assignment(match, before, original), pace * 0.4)
+    if (order?.kind === 'walk-point') emit('movement', `${player.name} walks the point for a new shooting lane.`)
     if (order?.kind === 'show-outlet') emit('movement', `${player.name} offers an outlet along the boards.`)
     if (order?.kind === 'forecheck' || order?.kind === 'skate' || order?.kind === 'carry') {
       const distanceMoved = Math.round(distance(before.position, player.position) * 0.61)
@@ -381,7 +404,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     if (roll() < shot.onTarget) {
       if (roll() >= shot.save) {
         next.score[shooter.team] += 1
-        emit('score', `${shooter.name} scores${oneTimer ? ' on the one-timer' : ''} (${detail}).`)
+        emit('score', `${shooter.name} scores${oneTimer ? ' on the one-timer' : ''} (${detail}).`,
+          oneTimer && screen ? focusAchievement('screened-goal', shooter) : undefined)
         faceoff(next, keeper.team)
         emit('restart', `Centre-ice faceoff. ${teamNames(next)[keeper.team]} take the puck.`)
         return
@@ -404,7 +428,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
 
   const carrier = athleteById(next, original.id)
   const order = orders.get(carrier.id)
-  if (order?.kind === 'shoot') {
+  if (order?.kind === 'shoot' || order?.kind === 'walk-point') {
     shoot(carrier, false)
   } else if (order?.kind === 'pass' || order?.kind === 'wall-outlet') {
     const receiver = athleteById(next, order.target)
@@ -414,7 +438,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       next.holder = receiver.id
       emit('ball', banked
         ? `${carrier.name} banks the puck along the boards to ${receiver.name} (${Math.round(chance)}% completion).`
-        : `${carrier.name} finds ${receiver.name} (${Math.round(chance)}% completion).`)
+        : `${carrier.name} finds ${receiver.name} (${Math.round(chance)}% completion).`,
+      banked && orders.get(receiver.id)?.kind === 'show-outlet' ? focusAchievement('bank-breakout', carrier) : undefined)
       if (orders.get(receiver.id)?.kind === 'one-timer') shoot(receiver, true)
     } else {
       const bank = banked ? bankPoint(carrier.position, receiver.position) : undefined

@@ -1,5 +1,6 @@
+import { FOCUS_XP, isFocusForSport, MATCH_FOCUSES, type MatchFocus } from './match-focus.ts'
 import { clamp } from './math.ts'
-import { SIGNATURES, SIGNATURE_XP, supportsSignatures, type Signature } from './athlete-abilities.ts'
+import { SIGNATURES, SIGNATURE_XP, signatureAvailable, type Signature } from './athlete-abilities.ts'
 import type { Appearance, AthleteBuild, PlanCommand, Technique } from './match.ts'
 import { PREVIOUS_RULES_VERSION as ORIGINAL_SOCCER_RULES } from './soccer.ts'
 import { isFormation, type Formation } from './football.ts'
@@ -141,6 +142,7 @@ export interface Club extends SeasonRecord {
     formations?: (Formation | null)[]
     opponentPlans?: (PlanCommand[] | null)[]
     athletics?: Athletics[]
+    focus?: MatchFocus
   } | null
 }
 
@@ -306,7 +308,7 @@ export function equip(club: Club, id: string, sport: Sport, technique: Technique
 }
 
 export function canLearnSignature(player: ClubAthlete, sport: Sport, signature: Signature): boolean {
-  return supportsSignatures(sport) && Object.hasOwn(SIGNATURES, signature)
+  return Object.hasOwn(SIGNATURES, signature) && signatureAvailable(signature, sport)
     && player.specialty === SIGNATURES[signature].specialty && player.xp[sport] >= SIGNATURE_XP
     && player.mastery[player.specialty] >= SIGNATURE_MASTERY
     && !player.learned[sport].includes(signature)
@@ -329,7 +331,7 @@ export function learnSignature(club: Club, id: string, sport: Sport, signature: 
 export function equipSignature(club: Club, id: string, sport: Sport, signature: Signature | null): Club {
   openWeek(club)
   const player = clubAthlete(club, id)
-  if (!supportsSignatures(sport) || (signature !== null && !player.learned[sport].includes(signature))) {
+  if (signature !== null && !player.learned[sport].includes(signature)) {
     throw new Error('Learn this signature play before equipping it.')
   }
   const updated = { ...player, signature: { ...player.signature, [sport]: signature } }
@@ -384,7 +386,10 @@ export function settleFixture(club: Club, score: Score, players: readonly { team
   const fixture = nextFixture(club)
   const pending = club.pending
   if (!fixture || !pending) throw new Error('There is no current fixture.')
-  const starters = club.lineups[fixture.sport]
+  const sport = fixture.sport
+  const focus = pending.focus
+  const skill = focus ? MATCH_FOCUSES[focus.id].skill : undefined
+  const starters = club.lineups[sport]
   const onField = players.filter(player => player.team === 0)
   const played = appearances ?? onField.map(({ stamina }, slot) => ({
     slot, stamina, orders: pending.turns.filter(turn => turn.some(order => order.athlete === `0-${slot}`)).length,
@@ -396,9 +401,14 @@ export function settleFixture(club: Club, score: Score, players: readonly { team
     const role = roleName(fixture.sport, appearance.slot)
     const starts = player.roleStarts[fixture.sport]
     const experience = appearance.orders >= 3 ? 2 : 1
+    const rewarded = focus?.athlete === profile(player.id).name
+    const technical = rewarded && skill ? { ...player.technical,
+      [sport]: { ...player.technical[sport], [skill]: Math.min(MAX_TECHNICAL_RANK, player.technical[sport][skill] + 1) },
+    } : player.technical
     return {
       ...player, fatigue: clamp(player.fatigue + 23 + Math.round(exertion / 3), 0, 65),
-      xp: { ...player.xp, [fixture.sport]: player.xp[fixture.sport] + experience },
+      xp: { ...player.xp, [sport]: player.xp[sport] + experience + (rewarded ? FOCUS_XP : 0) },
+      technical,
       mastery: growMastery(player, experience),
       roleStarts: { ...player.roleStarts, [fixture.sport]: { ...starts, [role]: Math.min(MAX_ROLE_STARTS, (starts[role] ?? 0) + 1) } },
     }
@@ -548,8 +558,8 @@ export function readClub(raw: string): Club {
         const learned = player.learned[sport]
         const signature = player.signature[sport]
         if (!Array.isArray(learned) || learned.length > Object.keys(SIGNATURES).length || new Set(learned).size !== learned.length
-          || learned.some(key => !supportsSignatures(sport) || typeof key !== 'string'
-            || !Object.hasOwn(SIGNATURES, key) || player.xp[sport] < SIGNATURE_XP
+          || learned.some(key => typeof key !== 'string' || !Object.hasOwn(SIGNATURES, key)
+            || !signatureAvailable(key as Signature, sport) || player.xp[sport] < SIGNATURE_XP
             || player.mastery[SIGNATURES[key as Signature].specialty] < SIGNATURE_MASTERY)
           || (signature !== null && !learned.includes(signature))) return true
         const selected = player.equipped[sport]
@@ -584,6 +594,10 @@ export function readClub(raw: string): Club {
         || club.pending.athletics.length !== ROLES[upcoming.sport].length
         || club.pending.athletics.some(traits => !record(traits) || Object.keys(ATHLETIC_TRAITS)
           .some(trait => !integer(traits[trait as AthleticTrait], 0, MAX_TRAIT + 1)))))
+      || (club.pending.focus !== undefined && (!record(club.pending.focus)
+        || !isFocusForSport(club.pending.focus.id, upcoming.sport)
+        || (club.pending.focus.athlete !== undefined && !club.lineups[upcoming.sport]
+          .some(id => profile(id).name === club.pending!.focus!.athlete))))
       || club.pending.turns.some(plan => !validPlan(plan))) {
       throw new Error('The current fixture in this save is invalid.')
     }
