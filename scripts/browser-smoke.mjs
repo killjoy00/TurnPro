@@ -365,7 +365,7 @@ try {
   await builds.getByRole('button', { name: 'Learn cut and finish for Basketball' }).click()
   assert.equal(await signature.inputValue(), 'cut-and-finish')
   assert.equal(await builds.locator('[data-signature="basketball"]:focus').count(), 1)
-  assert.equal(await builds.getByRole('button', { name: 'Train Basketball', exact: true }).isDisabled(), true)
+  assert.equal(await builds.getByRole('button', { name: 'Train Basketball', exact: true }).isEnabled(), true)
   await builds.getByRole('combobox', { name: 'Specialty for Vale' }).selectOption('Defender')
   assert.equal(await signature.inputValue(), 'cut-and-finish')
   await signature.selectOption('')
