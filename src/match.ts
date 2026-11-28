@@ -79,14 +79,22 @@ export type PlayCue =
   | { type: 'plan'; team: Team; commands: readonly PlanCommand[] }
   | { type: 'move'; moves: readonly ResolvedMove[] }
   | { type: 'contact'; athlete: string; opponent: string }
-  | { type: 'ball'; action: 'pass' | 'shot' | 'interception' | 'rebound' | 'strip';
-      from: Point; to: Point; holder?: string }
+  | { type: 'ball'; action: 'pass' | 'shot' | 'interception' | 'rebound' | 'strip' | 'carry' | 'kick';
+      from: Point; to: Point; holder?: string; via?: Point }
   | { type: 'reset'; moves: readonly ResolvedMove[]; holder: string }
 
 export type TurnEvent = { cue?: PlayCue; achievement?: FocusAchievement } & (
   | { kind: EventKind; text: string }
   | { kind: 'rebound'; text: string; offensive: boolean }
 )
+
+export function resolvedMoves(before: readonly AthleteSnapshot[], after: readonly AthleteSnapshot[]): ResolvedMove[] {
+  return before.flatMap(player => {
+    const next = after.find(candidate => candidate.id === player.id)
+    return next && (player.position.x !== next.position.x || player.position.y !== next.position.y)
+      ? [{ athlete: player.id, from: player.position, to: next.position }] : []
+  })
+}
 
 export function otherTeam(team: Team): Team {
   return team === 0 ? 1 : 0

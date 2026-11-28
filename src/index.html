@@ -53,8 +53,9 @@
         </div>
         <p id="summary" class="summary" role="status"></p>
         <div class="court">
-          <canvas id="court-lines" width="700" height="520" aria-hidden="true"></canvas>
+          <canvas id="court-lines" width="1400" height="1040" aria-hidden="true"></canvas>
           <div id="markers" class="markers" aria-label="Athletes on court"></div>
+          <div id="match-impact" class="match-impact" aria-hidden="true"></div>
         </div>
         <p id="lineup-detail" class="lineup-detail" hidden></p>
         <div id="lineup" class="lineup" aria-label="Comets lineup"></div>
@@ -115,6 +116,7 @@
     <div class="display-options">
       <label>Text size <select id="text-size"><option value="default">Default</option><option value="large">Large</option><option value="extra">Extra large</option></select></label>
       <label>Contrast <select id="contrast"><option value="standard">Standard</option><option value="high">High</option></select></label>
+      <label>Match sound <select id="match-sound"><option value="on">On</option><option value="off">Off</option></select></label>
     </div>
     <div id="bindings"></div>
     <p id="binding-message" role="status"></p>

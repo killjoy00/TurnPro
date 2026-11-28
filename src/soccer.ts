@@ -3,8 +3,8 @@ import { laneReaction, LANE_REACTION_COST } from './athlete-abilities.ts'
 import { contactBonus, fatiguePenalty, movementMultiplier, recoveryBonus } from './athletics.ts'
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
 import {
-  COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, teamNames, validatePlans,
-  type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type Team, type TurnEvent,
+  COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, resolvedMoves, teamNames, validatePlans,
+  type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type PlayCue, type Team, type TurnEvent,
 } from './match.ts'
 
 export const PITCH = { width: 105, length: 68 }
@@ -388,7 +388,7 @@ export function previewPass(match: Match, command: Pass, plan: readonly Command[
 
 function resolvePass(
   match: Match, initial: Match, holder: Footballer, command: Pass,
-  roll: () => number, emit: (kind: EventKind, text: string, achievement?: FocusAchievement) => void,
+  roll: () => number, emit: (kind: EventKind, text: string, achievement?: FocusAchievement, cue?: PlayCue) => void,
   react: (passer: Footballer, reception: Point) => void,
   showingWide = false,
 ): Footballer | undefined {
@@ -396,7 +396,8 @@ function resolvePass(
   if (startsOffside(initial, athleteById(initial, holder.id), athleteById(initial, target.id))) {
     const defender = nearBall(match, target, Infinity)[0]
     match.holder = defender.id
-    emit('turnover', `${target.name} started beyond the defensive line. ${defender.name} takes the offside restart.`)
+    emit('turnover', `${target.name} started beyond the defensive line. ${defender.name} takes the offside restart.`,
+      undefined, { type: 'reset', moves: [], holder: defender.id })
     return
   }
   const reception = passArrival(match, holder, target.position, command.kind)
@@ -409,14 +410,16 @@ function resolvePass(
     match.holder = target.id
     const delivery = command.kind === 'switch-field' ? 'a switch of play' : 'a ' + ACTIONS[command.kind].label.toLowerCase()
     emit('ball', `${holder.name} finds ${target.name} with ${delivery} (${detail}).`,
-      command.kind === 'switch-field' && showingWide ? focusAchievement('wide-switch', holder) : undefined)
+      command.kind === 'switch-field' && showingWide ? focusAchievement('wide-switch', holder) : undefined,
+      { type: 'ball', action: 'pass', from: holder.position, to: reception, holder: target.id })
     return target
   }
   const defender = defenders[0] ?? nearBall(match, target, Infinity)[0]
   match.holder = defender.id
   emit('turnover', defenders.length
     ? `${defender.name} intercepts ${holder.name}'s ${ACTIONS[command.kind].label.toLowerCase()} (${detail}).`
-    : `${holder.name}'s pass runs loose. ${defender.name} collects it (${detail}).`)
+    : `${holder.name}'s pass runs loose. ${defender.name} collects it (${detail}).`,
+  undefined, { type: 'ball', action: 'interception', from: holder.position, to: defender.position, holder: defender.id })
 }
 
 export function resolveTurn(match: Match, plans: Plans<Command>) {
@@ -428,12 +431,13 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   const random = seededRandom(match.randomState)
   const roll = () => random.next() * 100
   const events: TurnEvent[] = revealPlans(match, plans, commandLabel)
-  const emit = (kind: EventKind, text: string, achievement?: FocusAchievement) =>
-    events.push({ kind, text, ...(achievement ? { achievement } : {}) })
+  const emit = (kind: EventKind, text: string, achievement?: FocusAchievement, cue?: PlayCue) =>
+    events.push({ kind, text, ...(achievement ? { achievement } : {}), ...(cue ? { cue } : {}) })
   const commands = new Map(plans.flat().map(command => [command.athlete, command]))
   const originalHolder = athleteById(match, match.holder)
   const holder = athleteById(next, match.holder)
 
+  const movementStart = events.length
   for (const player of next.athletes) {
     const initial = athleteById(match, player.id)
     const command = commands.get(player.id)
@@ -445,34 +449,57 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     }
   }
 
+  const moves = resolvedMoves(match.athletes, next.athletes)
+  if (moves.length) {
+    const first = events[movementStart]
+    const cue = { type: 'move', moves } as const
+    if (first) first.cue = cue
+    else emit('movement', 'Players run their orders and hold their shape.', undefined, cue)
+  }
+
+  function restartAt(team: Team, text: string) {
+    const before = next.athletes.map(player => ({ ...player }))
+    kickoff(next, team)
+    emit('restart', text, undefined, { type: 'reset', moves: resolvedMoves(before, next.athletes), holder: next.holder })
+  }
+
   let reacted: string | undefined
   function react(passer: Footballer, reception: Point) {
     if (reacted !== undefined) return
     const action = laneReaction(opponents(next, passer).filter(player => player.slot !== 0 && !commands.has(player.id)),
       passer.position, reception, moveRange)
     if (!action) return
+    const from = action.athlete.position
     action.athlete.position = action.point
     reacted = action.athlete.id
-    emit('movement', `${action.athlete.name} jumps the passing lane.`)
+    emit('movement', `${action.athlete.name} jumps the passing lane.`, undefined,
+      { type: 'move', moves: [{ athlete: action.athlete.id, from, to: action.point }] })
   }
 
   function takeShot(shooter: Footballer) {
     const shot = shotEstimate(next, shooter)
     const defense = otherTeam(shooter.team)
     const keeper = athleteById(next, `${defense}-0`)
+    const goal = attackGoal(next, shooter.team)
     const detail = `${Math.round(shot.range)} m, ${shot.pressure} closing, ${shot.goal}% goal chance`
     if (roll() >= shot.onTarget) {
+      const from = keeper.position
       keeper.position = oriented(next, defense, { x: 5.5, y: MIDFIELD.y })
       next.holder = keeper.id
-      emit('restart', `${shooter.name} shoots wide (${detail}). Goal kick for ${teamNames(next)[defense]}.`)
+      const wide = { x: goal.x, y: goal.y + (shooter.position.y < goal.y ? -5.5 : 5.5) }
+      emit('ball', `${shooter.name} shoots wide (${detail}).`, undefined,
+        { type: 'ball', action: 'shot', from: shooter.position, to: wide })
+      emit('restart', `Goal kick for ${teamNames(next)[defense]}.`, undefined,
+        { type: 'reset', moves: [{ athlete: keeper.id, from, to: keeper.position }], holder: keeper.id })
     } else if (roll() < shot.save) {
       next.holder = keeper.id
-      emit('save', `${keeper.name} saves ${shooter.name}'s shot and holds it (${detail}).`)
+      emit('save', `${keeper.name} saves ${shooter.name}'s shot and holds it (${detail}).`, undefined,
+        { type: 'ball', action: 'shot', from: shooter.position, to: keeper.position, holder: keeper.id })
     } else {
       next.score[shooter.team] += 1
-      emit('score', `${shooter.name} scores for ${teamNames(next)[shooter.team]} (${detail}).`)
-      kickoff(next, defense)
-      emit('restart', `${teamNames(next)[defense]} restart at midfield.`)
+      emit('score', `${shooter.name} scores for ${teamNames(next)[shooter.team]} (${detail}).`, undefined,
+        { type: 'ball', action: 'shot', from: shooter.position, to: goal })
+      restartAt(defense, `${teamNames(next)[defense]} restart at midfield.`)
     }
   }
 
@@ -510,7 +537,8 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       if (roll() < chance) {
         next.holder = challenger.id
         emit('turnover', `${challenger.name} wins the ball from ${holder.name} (${Math.round(chance)}% tackle chance).`,
-          focusAchievement('press-recovery', challenger))
+          focusAchievement('press-recovery', challenger),
+          { type: 'ball', action: 'strip', from: holder.position, to: challenger.position, holder: challenger.id })
       } else {
         emit('ball', `${holder.name} shields the ball from ${challenger.name}.`)
       }
@@ -528,8 +556,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   next.turn += 1
   if (next.turn === HALF_TURNS + 1) {
     const startingTeam = otherTeam(match.openingTeam)
-    kickoff(next, startingTeam)
-    emit('restart', `Half-time. Teams switch ends. ${teamNames(next)[startingTeam]} start the second half.`)
+    restartAt(startingTeam, `Half-time. Teams switch ends. ${teamNames(next)[startingTeam]} start the second half.`)
   }
   if (finished(next)) emit('finish', finalScore(next))
   return { match: next, events }

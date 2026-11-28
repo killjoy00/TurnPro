@@ -2,8 +2,8 @@ import { focusAchievement, type FocusAchievement } from './match-focus.ts'
 import { contactBonus, fatiguePenalty, movementMultiplier, recoveryBonus } from './athletics.ts'
 import { clamp, distance, distanceToSegment, seededRandom, stepToward, type Point } from './math.ts'
 import {
-  COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, teamNames, validatePlans,
-  type Appearance, type AthleteBuild, type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type Team, type TurnEvent,
+  COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, resolvedMoves, teamNames, validatePlans,
+  type Appearance, type AthleteBuild, type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type PlayCue, type Team, type TurnEvent,
 } from './match.ts'
 
 export const RINK = { width: 100, height: 48 }
@@ -371,11 +371,12 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   const random = seededRandom(match.randomState)
   const roll = () => random.next() * 100
   const events: TurnEvent[] = revealPlans(match, plans, commandLabel)
-  const emit = (kind: EventKind, text: string, achievement?: FocusAchievement) =>
-    events.push({ kind, text, ...(achievement ? { achievement } : {}) })
+  const emit = (kind: EventKind, text: string, achievement?: FocusAchievement, cue?: PlayCue) =>
+    events.push({ kind, text, ...(achievement ? { achievement } : {}), ...(cue ? { cue } : {}) })
   const orders = new Map(plans.flat().map(order => [order.athlete, order]))
   const original = athleteById(match, match.holder)
 
+  const movementStart = events.length
   for (const player of next.athletes) {
     const before = athleteById(match, player.id)
     const order = orders.get(before.id)
@@ -394,6 +395,20 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     }
   }
 
+  const moves = resolvedMoves(match.athletes, next.athletes)
+  if (moves.length) {
+    const first = events[movementStart]
+    const cue = { type: 'move', moves } as const
+    if (first) first.cue = cue
+    else emit('movement', 'Skaters take their lanes.', undefined, cue)
+  }
+
+  function restartAt(team: Team, text: string) {
+    const before = next.athletes.map(player => ({ ...player }))
+    faceoff(next, team)
+    emit('restart', text, undefined, { type: 'reset', moves: resolvedMoves(before, next.athletes), holder: next.holder })
+  }
+
   function shoot(shooter: Skater, oneTimer: boolean) {
     const goal = attackGoal(next, shooter.team)
     const screen = next.athletes.find(player => player.team === shooter.team && orders.get(player.id)?.kind === 'screen'
@@ -405,25 +420,29 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       if (roll() >= shot.save) {
         next.score[shooter.team] += 1
         emit('score', `${shooter.name} scores${oneTimer ? ' on the one-timer' : ''} (${detail}).`,
-          oneTimer && screen ? focusAchievement('screened-goal', shooter) : undefined)
-        faceoff(next, keeper.team)
-        emit('restart', `Centre-ice faceoff. ${teamNames(next)[keeper.team]} take the puck.`)
+          oneTimer && screen ? focusAchievement('screened-goal', shooter) : undefined,
+          { type: 'ball', action: 'shot', from: shooter.position, to: goal })
+        restartAt(keeper.team, `Centre-ice faceoff. ${teamNames(next)[keeper.team]} take the puck.`)
         return
       }
       if (roll() < 65) {
         next.holder = keeper.id
-        emit('save', `${keeper.name} holds ${shooter.name}’s ${oneTimer ? 'one-timer' : 'shot'} (${detail}).`)
+        emit('save', `${keeper.name} holds ${shooter.name}’s ${oneTimer ? 'one-timer' : 'shot'} (${detail}).`, undefined,
+          { type: 'ball', action: 'shot', from: shooter.position, to: keeper.position, holder: keeper.id })
         return
       }
-      emit('save', `${keeper.name} stops the shot and leaves a rebound (${detail}).`)
+      emit('save', `${keeper.name} stops the shot and leaves a rebound (${detail}).`, undefined,
+        { type: 'ball', action: 'shot', from: shooter.position, to: keeper.position })
     } else {
-      emit('ball', `${shooter.name}’s ${oneTimer ? 'one-timer' : 'shot'} goes wide (${detail}).`)
+      emit('ball', `${shooter.name}’s ${oneTimer ? 'one-timer' : 'shot'} goes wide (${detail}).`, undefined,
+        { type: 'ball', action: 'shot', from: shooter.position, to: { x: goal.x, y: MID + 4 } })
     }
     const rebound = { x: goal.x - 8 * direction(next, shooter.team), y: MID + (roll() - 50) * 0.29 }
     const first = next.athletes.filter(player => player.slot < 5).sort((a, b) =>
       distance(a.position, rebound) - distance(b.position, rebound))[0]
     next.holder = first.id
-    events.push({ kind: 'rebound', offensive: first.team === shooter.team, text: `${first.name} gets to the loose puck first.` })
+    events.push({ kind: 'rebound', offensive: first.team === shooter.team, text: `${first.name} gets to the loose puck first.`,
+      cue: { type: 'ball', action: 'rebound', from: rebound, to: first.position, holder: first.id } })
   }
 
   const carrier = athleteById(next, original.id)
@@ -433,26 +452,29 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   } else if (order?.kind === 'pass' || order?.kind === 'wall-outlet') {
     const receiver = athleteById(next, order.target)
     const banked = order.kind === 'wall-outlet'
+    const bank = banked ? bankPoint(carrier.position, receiver.position) : undefined
     const chance = passChance(next, carrier, receiver, banked)
     if (roll() < chance) {
       next.holder = receiver.id
       emit('ball', banked
         ? `${carrier.name} banks the puck along the boards to ${receiver.name} (${Math.round(chance)}% completion).`
         : `${carrier.name} finds ${receiver.name} (${Math.round(chance)}% completion).`,
-      banked && orders.get(receiver.id)?.kind === 'show-outlet' ? focusAchievement('bank-breakout', carrier) : undefined)
+      banked && orders.get(receiver.id)?.kind === 'show-outlet' ? focusAchievement('bank-breakout', carrier) : undefined,
+      { type: 'ball', action: 'pass', from: carrier.position, to: receiver.position, holder: receiver.id, via: bank })
       if (orders.get(receiver.id)?.kind === 'one-timer') shoot(receiver, true)
     } else {
-      const bank = banked ? bankPoint(carrier.position, receiver.position) : undefined
       const interceptor = passLane(next, carrier, receiver, bank)[0] ?? nearby(next, receiver, Infinity)[0]
       next.holder = interceptor.id
-      emit('turnover', `${interceptor.name} takes the puck from ${carrier.name}’s ${banked ? 'bank outlet' : 'pass'} (${Math.round(chance)}% completion).`)
+      emit('turnover', `${interceptor.name} takes the puck from ${carrier.name}’s ${banked ? 'bank outlet' : 'pass'} (${Math.round(chance)}% completion).`,
+        undefined, { type: 'ball', action: 'interception', from: carrier.position, to: interceptor.position, holder: interceptor.id })
     }
   } else {
     const pressure = nearby(next, carrier, 4).find(player => orders.get(player.id)?.kind === 'forecheck')
     const contact = pressure ? contactBonus(pressure) - contactBonus(carrier) : 0
     if (pressure && roll() < 37 + fatiguePenalty(carrier, 100, 0.25) + (pressure.defense ?? 0) * 3 + contact * 4) {
       next.holder = pressure.id
-      emit('turnover', `${pressure.name} wins the puck on the forecheck.`)
+      emit('turnover', `${pressure.name} wins the puck on the forecheck.`, undefined,
+        { type: 'ball', action: 'strip', from: carrier.position, to: pressure.position, holder: pressure.id })
     } else {
       emit('ball', `${carrier.name} ${pressure ? `holds the puck under pressure from ${pressure.name}` : 'keeps the puck'}.`)
     }
@@ -491,8 +513,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     emit('finish', finalScore(next))
   } else if ((next.turn - 1) % PERIOD_TURNS === 0) {
     const taking = period(next) === 2 ? otherTeam(next.openingTeam) : next.openingTeam
-    faceoff(next, taking)
-    emit('restart', `Period ${period(next)}. Teams switch ends. ${teamNames(next)[taking]} take the faceoff.`)
+    restartAt(taking, `Period ${period(next)}. Teams switch ends. ${teamNames(next)[taking]} take the faceoff.`)
   }
   return { match: next, events }
 }
