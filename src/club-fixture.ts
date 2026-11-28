@@ -3,7 +3,7 @@ import * as basketball from './basketball.ts'
 import * as soccer from './soccer.ts'
 import * as hockey from './hockey.ts'
 import * as football from './football.ts'
-import { clubAthlete, nextFixture, physicalProfile, ratings, settleFixture, startFixture, type Club, type Sport } from './club.ts'
+import { clubAthlete, fixtureLineup, nextFixture, physicalProfile, ratings, settleFixture, startFixture, type Club, type Sport } from './club.ts'
 import { planTurn as basketballAI, planTurnV1 as basketballV1, type DefenseStyle } from './opponent.ts'
 import { planTurn as soccerAI, planTurnV1 as soccerV1 } from './soccer-opponent.ts'
 import { planTurn as hockeyAI, type HockeyStyle } from './hockey-opponent.ts'
@@ -32,7 +32,7 @@ function applyLineup(lineup: AthleteBuild[], sport: 'basketball' | 'soccer', mat
 }
 
 function captureStart(club: Club, fixture: Fixture, rules: number, legacy: boolean): FixtureStart {
-  const starters = [...club.lineups[fixture.sport]]
+  const { starters } = fixtureLineup(club, fixture)
   const header = { version: FIXTURE_START_V1, opponentPolicy: OPPONENT_POLICY_V1, starters } as const
   const lineup = starters.map((id, slot) => {
     const athlete = clubAthlete(club, id)

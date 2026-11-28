@@ -10,9 +10,9 @@ import { mountGame, type SeasonMatch, type SportView } from './game-view.ts'
 import { DEFENSE_NAMES, planTurn as basketballAI, type DefenseStyle } from './opponent.ts'
 import { planTurn as soccerAI } from './soccer-opponent.ts'
 import { drawBasketball, drawFootball, drawHockey, drawSoccer } from './surfaces.ts'
-import { equip, equipSignature, learnSignature, profile, readClub, recruit, setStarter, specialize, train, trainTechnical, type Club } from './club.ts'
+import { chooseMasteryBranch, equip, equipSignature, learnSignature, nextFixture, profile, readClub, recruit, setFixturePriority, setStarter, specialize, train, trainTechnical, type Club } from './club.ts'
 import { beginClubFixture, openClubFixture, saveClubTurn, upgradeClubFixture } from './club-fixture.ts'
-import { DRILLS, specialtyRank } from './progression.ts'
+import { DRILLS, MAX_MASTERY, specialtyRank } from './progression.ts'
 import { mountClub } from './club-view.ts'
 import { teamNames, type MatchSnapshot, type PlanCommand, type TurnEvent } from './match.ts'
 import { installGamepad } from './gamepad.ts'
@@ -422,8 +422,10 @@ function enterFixture(focus?: FocusId) {
       }
       const role = athlete.specialty
       const rank = specialtyRank(athlete.mastery[role])
-      return rank === specialtyRank(before.mastery[role]) ? [] : [`${profile(athlete.id).name} · ${role} · ${rank}`]
+      if (rank === specialtyRank(before.mastery[role])) return []
+      return [`${profile(athlete.id).name} · ${role} · ${rank}${athlete.mastery[role] === MAX_MASTERY ? ' · Branch ready' : ''}`]
     })
+    if (nextFixture(previous)?.stage === 'cup' && match.score[0] > match.score[1]) milestones.unshift('Cup won · Trophy added to this season')
     return { milestones, focus: earned, reward }
   }
   const savedFocus = active.pending?.focus
@@ -442,6 +444,8 @@ function showClub() {
     update: updateClub,
     start: enterFixture,
     recruit: id => updateClub(recruit(club!, id)),
+    chooseBranch: (id, branch) => updateClub(chooseMasteryBranch(club!, id, branch)),
+    prioritize: (id, number) => updateClub(setFixturePriority(club!, id, number)),
     train: (id, focus) => updateClub(train(club!, id, focus)),
     trainTechnical: (id, sport, skill) => updateClub(trainTechnical(club!, id, sport, skill)),
     equip: (id, sport, technique) => updateClub(equip(club!, id, sport, technique)),

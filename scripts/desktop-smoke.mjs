@@ -27,7 +27,7 @@ try {
     assert.match(await page.locator('.turn-clock').innerText(), new RegExp(`${unit} 2`, 'i'))
   }
   await page.getByRole('button', { name: 'Club season' }).click()
-  await page.getByRole('button', { name: 'All four sports · 12 fixtures' }).click()
+  await page.getByRole('button', { name: 'All four sports · 12 league + 4 cups' }).click()
   await page.getByRole('button', { name: 'Play fixture' }).click()
   await page.getByRole('button', { name: 'Commit turn' }).click()
   assert.match(await page.locator('.turn-clock').innerText(), /Turn 2/i)

@@ -6,12 +6,12 @@ import type { Appearance, AthleteBuild, PlanCommand, Technique } from './match.t
 import { PREVIOUS_RULES_VERSION as ORIGINAL_SOCCER_RULES } from './soccer.ts'
 import { isFormation, type Formation } from './football.ts'
 import {
-  emptyProgression, MAX_MASTERY, MAX_TECHNICAL_RANK, SIGNATURE_MASTERY, SPECIALTY_NAMES, TECHNICAL_PREREQUISITE,
-  TECHNICAL_SKILLS, type Mastery, type Specialty, type TechnicalSkill, type TechnicalTraining,
+  canChooseBranch, emptyProgression, MAX_MASTERY, MAX_TECHNICAL_RANK, SIGNATURE_MASTERY, SPECIALTY_NAMES, TECHNICAL_PREREQUISITE,
+  TECHNICAL_SKILLS, type Mastery, type MasteryBranches, type Specialty, type TechnicalSkill, type TechnicalTraining,
 } from './progression.ts'
 import { ATHLETIC_TRAITS, isAthleticTrait, MAX_TRAIT, UNTRAINED, type Athletics, type AthleticTrait } from './athletics.ts'
 import {
-  schedule, seasonSchedule, seasonSports, simulateRivals, SPORTS, TURN_LIMITS,
+  BETWEEN_WEEK_RECOVERY, SAME_WEEK_RECOVERY, schedule, seasonCalendar, seasonSchedule, seasonSports, simulateRivals, SPORTS, TURN_LIMITS,
   type Fixture, type LeagueProgress, type Score, type SeasonMode, type SeasonRecord, type Sport,
 } from './league.ts'
 
@@ -85,6 +85,16 @@ const INITIAL_XP: Record<Sport, number> = { basketball: 0, soccer: 0, hockey: 0,
 const INITIAL_TECHNIQUES: Record<Sport, Technique | null> = { basketball: null, soccer: null, hockey: null, football: null }
 export const MAX_FILM_BONUS = 2
 export type TrainingFocus = Sport | AthleticTrait | 'film' | 'recovery'
+export const CAMP_SESSIONS = 2
+export const RECOVERY_SESSION = 28
+export const RESTED_FIXTURE_RECOVERY = 14
+type CampActivity =
+  | { athlete: string; kind: 'training'; focus: TrainingFocus }
+  | { athlete: string; kind: 'drill'; sport: Sport; skill: TechnicalSkill }
+  | { athlete: string; kind: 'lesson'; sport: Sport; signature: Signature }
+type CampEntry = CampActivity | { kind: 'legacy' }
+interface Camp { week: number; sessions: CampEntry[] }
+interface FixturePriority { athlete: string; fixture: number }
 const ROLE_THRESHOLD = 3
 const MAX_ROLE_STARTS = ROLE_THRESHOLD * 2
 type RoleRating = 'keeping' | 'passing' | 'defense' | 'finishing'
@@ -126,17 +136,19 @@ export interface ClubAthlete {
   learned: Record<Sport, Signature[]>
   signature: Record<Sport, Signature | null>
   mastery: Mastery
+  branches: MasteryBranches
   technical: TechnicalTraining
 }
 
 export interface Club extends SeasonRecord {
-  version: 7
+  version: 8
   season: number
   history: SeasonRecord[]
   recruitedSeason: number
   roster: ClubAthlete[]
   lineups: Record<Sport, string[]>
-  trainedWeek: number
+  camp: Camp
+  priority: FixturePriority | null
   pending: {
     rules: number
     turns: PlanCommand[][]
@@ -163,22 +175,27 @@ function emptySignatures(): Pick<ClubAthlete, 'learned' | 'signature'> {
 
 function makeAthlete(entry: Profile): ClubAthlete {
   return { id: entry.id, specialty: entry.specialty, xp: { ...INITIAL_XP }, fatigue: 0, film: 0, equipped: { ...INITIAL_TECHNIQUES },
-    athletics: { ...UNTRAINED }, roleStarts: emptyRoleStarts(), ...emptySignatures(), ...emptyProgression() }
+    athletics: { ...UNTRAINED }, roleStarts: emptyRoleStarts(), ...emptySignatures(), ...emptyProgression(), branches: {} }
 }
 
 export function createClub(mode: SeasonMode): Club {
   return {
-    version: 7, season: 1, history: [], recruitedSeason: 0, mode, league: { seedOffset: 0, otherResults: [] }, roster: profiles.map(makeAthlete),
+    version: 8, season: 1, history: [], recruitedSeason: 0, mode, league: { seedOffset: 0, otherResults: [] }, roster: profiles.map(makeAthlete),
     lineups: structuredClone(DEFAULT_LINEUPS),
-    trainedWeek: 0, results: [], pending: null,
+    ...(mode === 'all' ? { calendar: 'cups' as const } : {}),
+    camp: { week: 0, sessions: [] }, priority: null, results: [], pending: null,
   }
 }
 
 export function nextSeason(club: Club, mode: SeasonMode): Club {
   if (nextFixture(club) || club.pending) throw new Error('Finish the current season first.')
+  const { calendar, ...previous } = club
   return {
-    ...club, mode, season: club.season + 1, history: [...club.history, { mode: club.mode, results: club.results, league: club.league }],
-    results: [], league: { seedOffset: (club.season * 257) >>> 0, otherResults: [] }, pending: null, trainedWeek: 0,
+    ...previous, mode, season: club.season + 1,
+    history: [...club.history, { mode: club.mode, results: club.results, league: club.league, ...(calendar ? { calendar } : {}) }],
+    results: [], league: { seedOffset: (club.season * 257) >>> 0, otherResults: [] }, pending: null,
+    ...(mode === 'all' ? { calendar: 'cups' as const } : {}),
+    camp: { week: 0, sessions: [] }, priority: null,
     roster: club.roster.map(player => ({ ...player, fatigue: Math.max(0, player.fatigue - 30) })),
   }
 }
@@ -211,10 +228,29 @@ export function recruit(club: Club, id: string): Club {
   return { ...club, recruitedSeason: club.season, roster: [...club.roster, makeAthlete(prospect)] }
 }
 
-function trainingWeek(club: Club): number {
+export function campSessions(club: Club, week = nextFixture(club)?.week): readonly CampEntry[] {
+  return club.camp.week === week ? club.camp.sessions : []
+}
+
+function sameActivity(a: CampEntry, b: CampActivity) {
+  if (a.kind === 'legacy' || a.athlete !== b.athlete) return false
+  if (a.kind === 'training' && b.kind === 'training') return a.focus === b.focus
+  if (a.kind === 'drill' && b.kind === 'drill') return a.sport === b.sport && a.skill === b.skill
+  return a.kind === 'lesson' && b.kind === 'lesson' && a.sport === b.sport && a.signature === b.signature
+}
+
+export function canBookCamp(club: Club, activity: CampActivity): boolean {
+  const sessions = campSessions(club)
+  return !club.pending && Boolean(nextFixture(club)) && sessions.length < CAMP_SESSIONS
+    && !sessions.some(entry => sameActivity(entry, activity))
+}
+
+function bookCamp(club: Club, activity: CampActivity): Camp {
   const week = openWeek(club)
-  if (club.trainedWeek === week) throw new Error('You have used this week’s training session.')
-  return week
+  const sessions = campSessions(club, week)
+  if (sessions.length >= CAMP_SESSIONS) throw new Error('Both camp sessions are used this week.')
+  if (sessions.some(entry => sameActivity(entry, activity))) throw new Error('This athlete already used this activity this week.')
+  return { week, sessions: [...sessions, activity] }
 }
 
 function growMastery(player: ClubAthlete, points: number): Mastery {
@@ -222,14 +258,14 @@ function growMastery(player: ClubAthlete, points: number): Mastery {
 }
 
 export function train(club: Club, id: string, focus: TrainingFocus): Club {
-  const week = trainingWeek(club)
+  const camp = bookCamp(club, { athlete: id, kind: 'training', focus })
   const improved = { ...clubAthlete(club, id) }
   if (focus === 'film') {
     if (improved.film >= MAX_FILM_BONUS) throw new Error('This athlete has reached their film-study limit.')
     improved.film += 1
   } else if (focus === 'recovery') {
     if (!improved.fatigue) throw new Error('This athlete is fully rested.')
-    improved.fatigue = Math.max(0, improved.fatigue - 28)
+    improved.fatigue = Math.max(0, improved.fatigue - RECOVERY_SESSION)
   } else if (isAthleticTrait(focus)) {
     if (improved.athletics[focus] >= MAX_TRAIT) throw new Error('This attribute is fully trained.')
     improved.athletics = { ...improved.athletics, [focus]: improved.athletics[focus] + 1 }
@@ -238,7 +274,7 @@ export function train(club: Club, id: string, focus: TrainingFocus): Club {
     improved.xp = { ...improved.xp, [focus]: improved.xp[focus] + 3 }
     improved.mastery = growMastery(improved, 1)
   }
-  return { ...club, trainedWeek: week, roster: club.roster.map(player => player.id === id ? improved : player) }
+  return { ...club, camp, roster: club.roster.map(player => player.id === id ? improved : player) }
 }
 
 export function canTrainTechnical(player: ClubAthlete, sport: Sport, skill: TechnicalSkill): boolean {
@@ -247,7 +283,7 @@ export function canTrainTechnical(player: ClubAthlete, sport: Sport, skill: Tech
 }
 
 export function trainTechnical(club: Club, id: string, sport: Sport, skill: TechnicalSkill): Club {
-  const week = trainingWeek(club)
+  const camp = bookCamp(club, { athlete: id, kind: 'drill', sport, skill })
   const player = clubAthlete(club, id)
   if (!seasonSports(club.mode).includes(sport) || !canTrainTechnical(player, sport, skill)) {
     throw new Error('This skill drill is unavailable.')
@@ -257,7 +293,7 @@ export function trainTechnical(club: Club, id: string, sport: Sport, skill: Tech
     xp: { ...player.xp, [sport]: player.xp[sport] + 1 },
     technical: { ...player.technical, [sport]: { ...player.technical[sport], [skill]: player.technical[sport][skill] + 1 } },
   }
-  return { ...club, trainedWeek: week, roster: club.roster.map(entry => entry.id === id ? updated : entry) }
+  return { ...club, camp, roster: club.roster.map(entry => entry.id === id ? updated : entry) }
 }
 
 export function specialize(club: Club, id: string, specialty: Specialty): Club {
@@ -272,6 +308,63 @@ export function specialize(club: Club, id: string, specialty: Specialty): Club {
   return { ...club, roster: club.roster.map(entry => entry.id === id ? player : entry) }
 }
 
+export function chooseMasteryBranch(club: Club, id: string, branch: Technique): Club {
+  openWeek(club)
+  const player = clubAthlete(club, id)
+  const role = player.specialty
+  if (player.mastery[role] < MAX_MASTERY || player.branches[role] || !canChooseBranch(role, branch)) {
+    throw new Error('This mastery branch is unavailable.')
+  }
+  const advanced = { ...player, branches: { ...player.branches, [role]: branch } }
+  return { ...club, roster: club.roster.map(entry => entry.id === id ? advanced : entry) }
+}
+
+function replacement(club: Club, sport: Sport, slot: number): ClubAthlete | undefined {
+  const ids = club.lineups[sport]
+  return club.roster.filter(player => !ids.includes(player.id) && (slot !== keeperSlot(sport) || profile(player.id).keeper))
+    .sort((a, b) => a.fatigue - b.fatigue || (baseSkill(profile(b.id), sport) + development(b, sport)) - (baseSkill(profile(a.id), sport) + development(a, sport)))[0]
+}
+
+export function fixtureLineup(club: Club, fixture: Fixture): { starters: string[]; rotation?: { out: string; in: string } } {
+  const starters = [...club.lineups[fixture.sport]]
+  const priority = club.priority
+  if (priority && priority.fixture > club.results.length) {
+    const slot = starters.indexOf(priority.athlete)
+    const reserve = slot >= 0 ? replacement(club, fixture.sport, slot) : undefined
+    if (reserve) {
+      starters[slot] = reserve.id
+      return { starters, rotation: { out: priority.athlete, in: reserve.id } }
+    }
+  }
+  return { starters }
+}
+
+function priorityLineupError(club: Club, priority: FixturePriority, fixtures: readonly Fixture[]) {
+  const target = fixtures[priority.fixture]
+  if (!club.lineups[target.sport].includes(priority.athlete)) return 'Put this athlete in the target fixture’s lineup first.'
+  for (const game of fixtures.slice(club.results.length, priority.fixture)) {
+    const slot = club.lineups[game.sport].indexOf(priority.athlete)
+    if (slot >= 0 && !replacement(club, game.sport, slot)) return 'A lineup has no eligible reserve to cover this athlete.'
+  }
+}
+
+export function setFixturePriority(club: Club, athlete: string, fixture: number | null): Club {
+  const week = openWeek(club)
+  if (fixture === null) return { ...club, priority: null }
+  clubAthlete(club, athlete)
+  const fixtures = seasonSchedule(club, club.season)
+  if (!Number.isInteger(fixture) || fixture <= club.results.length || fixtures[fixture]?.week !== week) {
+    throw new Error('Choose a later fixture in the current week.')
+  }
+  if (!fixtures.slice(club.results.length, fixture).some(game => club.lineups[game.sport].includes(athlete))) {
+    throw new Error('This athlete is already resting until that fixture.')
+  }
+  const priority = { athlete, fixture }
+  const error = priorityLineupError(club, priority, fixtures)
+  if (error) throw new Error(error)
+  return { ...club, priority }
+}
+
 export function setStarter(club: Club, sport: Sport, slot: number, id: string): Club {
   openWeek(club)
   clubAthlete(club, id)
@@ -282,7 +375,12 @@ export function setStarter(club: Club, sport: Sport, slot: number, id: string): 
   ids[slot] = id
   const keeper = keeperSlot(sport)
   if (keeper >= 0 && !profile(ids[keeper]).keeper) throw new Error('The goalkeeper slot needs a trained keeper.')
-  return { ...club, lineups: { ...club.lineups, [sport]: ids } }
+  const changed = { ...club, lineups: { ...club.lineups, [sport]: ids } }
+  if (changed.priority) {
+    const error = priorityLineupError(changed, changed.priority, seasonSchedule(changed, changed.season))
+    if (error) throw new Error(`${error} Clear the fixture priority to make this change.`)
+  }
+  return changed
 }
 
 export function unlockRequirement(technique: Technique): string {
@@ -295,6 +393,7 @@ export function unlocked(player: ClubAthlete, sport: Sport, technique: Technique
   if (technique === null) return true
   const ability = TECHNIQUES[technique]
   if (!ability) return false
+  if (Object.values(player.branches).includes(technique)) return true
   if (ability.trait) return physicalProfile(player)[ability.trait] >= 1 && player.xp[sport] >= 3
   return ability.specialty ? player.xp[sport] >= 6
     && (player.specialty === ability.specialty || player.mastery[ability.specialty] >= MAX_MASTERY)
@@ -317,7 +416,7 @@ export function canLearnSignature(player: ClubAthlete, sport: Sport, signature: 
 }
 
 export function learnSignature(club: Club, id: string, sport: Sport, signature: Signature): Club {
-  const week = trainingWeek(club)
+  const camp = bookCamp(club, { athlete: id, kind: 'lesson', sport, signature })
   const player = clubAthlete(club, id)
   if (!seasonSports(club.mode).includes(sport) || !canLearnSignature(player, sport, signature)) {
     throw new Error('This signature play cannot be learned yet.')
@@ -327,7 +426,7 @@ export function learnSignature(club: Club, id: string, sport: Sport, signature: 
     learned: { ...player.learned, [sport]: [...player.learned[sport], signature] },
     signature: { ...player.signature, [sport]: player.signature[sport] ?? signature },
   }
-  return { ...club, trainedWeek: week, roster: club.roster.map(entry => entry.id === id ? updated : entry) }
+  return { ...club, camp, roster: club.roster.map(entry => entry.id === id ? updated : entry) }
 }
 
 export function equipSignature(club: Club, id: string, sport: Sport, signature: Signature | null): Club {
@@ -391,14 +490,14 @@ export function settleFixture(club: Club, score: Score, players: readonly { team
   const sport = fixture.sport
   const focus = pending.focus
   const skill = focus ? MATCH_FOCUSES[focus.id].skill : undefined
-  const starters = pending.start?.starters ?? club.lineups[sport]
+  const starters = pending.start?.starters ?? fixtureLineup(club, fixture).starters
   const onField = players.filter(player => player.team === 0)
   const played = appearances ?? onField.map(({ stamina }, slot) => ({
     slot, stamina, orders: pending.turns.filter(turn => turn.some(order => order.athlete === `0-${slot}`)).length,
   }))
   const roster = club.roster.map(player => {
     const appearance = played.find(({ slot }) => starters[slot] === player.id)
-    if (!appearance) return { ...player, fatigue: Math.max(0, player.fatigue - 14) }
+    if (!appearance) return { ...player, fatigue: Math.max(0, player.fatigue - RESTED_FIXTURE_RECOVERY) }
     const exertion = Math.max(0, 100 - player.fatigue - appearance.stamina)
     const role = roleName(fixture.sport, appearance.slot)
     const starts = player.roleStarts[fixture.sport]
@@ -419,10 +518,10 @@ export function settleFixture(club: Club, score: Score, players: readonly { team
   const league = club.league && fixture.stage === 'regular'
     ? { ...club.league, otherResults: [...club.league.otherResults, simulateRivals(fixture, { rulesVersion: pending.rules })] } : club.league
   const next = { ...club, roster, league, results: [...club.results, score], pending: null }
-  if (nextFixture(next)?.week !== fixture.week) {
-    const daysOff = club.mode === 'all' ? 24 : 18
-    next.roster = roster.map(player => ({ ...player, fatigue: Math.max(0, player.fatigue - daysOff) }))
-  }
+  const newWeek = nextFixture(next)?.week !== fixture.week
+  const recovery = newWeek ? (club.mode === 'all' ? BETWEEN_WEEK_RECOVERY : 18) : club.calendar === 'cups' ? SAME_WEEK_RECOVERY : 0
+  if (newWeek || next.priority?.fixture === club.results.length) next.priority = null
+  if (recovery) next.roster = roster.map(player => ({ ...player, fatigue: Math.max(0, player.fatigue - recovery) }))
   return next
 }
 
@@ -444,14 +543,16 @@ function isScore(score: unknown): score is Score {
 
 function seasonValid(input: unknown, season: number, complete = false): input is SeasonRecord {
   if (!record(input) || !isMode(input.mode) || !Array.isArray(input.results) || !input.results.every(isScore)) return false
-  const fixtures = schedule(input.mode)
+  if (input.calendar !== undefined && (input.calendar !== 'cups' || input.mode !== 'all' || input.league === null)) return false
+  const fixtures = seasonCalendar({ mode: input.mode, calendar: input.calendar as SeasonRecord['calendar'], results: [], league: null })
+  const leagueFixtures = fixtures.filter(fixture => fixture.stage === 'regular')
   const fitsSport = (score: Score, fixture?: Fixture) => Boolean(fixture && (fixture.sport === 'football' || score.every(value => value <= 54)))
   const regular = fixtures.length
   if (input.league === null) return input.results.length === regular && input.results.every((score, index) => fitsSport(score, fixtures[index]))
   const league = input.league
   if (!record(league) || !integer(league.seedOffset, 0, 0xffffffff) || !Array.isArray(league.otherResults)
-    || !league.otherResults.every((score, index) => isScore(score) && fitsSport(score, fixtures[index]))
-    || league.otherResults.length !== Math.min(input.results.length, regular)
+    || !league.otherResults.every((score, index) => isScore(score) && fitsSport(score, leagueFixtures[index]))
+    || league.otherResults.length !== fixtures.slice(0, input.results.length).filter(fixture => fixture.stage === 'regular').length
     || input.results.length > regular + seasonSports(input.mode).length) return false
   const fullSchedule = seasonSchedule(input as unknown as SeasonRecord, season)
   if (!input.results.every((score, index) => fitsSport(score, fullSchedule[index]))) return false
@@ -505,7 +606,7 @@ function migrateSignatures(data: Record<string, unknown>): Record<string, unknow
     ? { ...player, ...emptySignatures() } : player) }
 }
 
-function migrateClub(data: Record<string, unknown>): unknown {
+function migrateProgression(data: Record<string, unknown>): Record<string, unknown> {
   if (data.version === 7) return data
   const previous = migrateSignatures(data)
   if (previous.version !== 6 || !Array.isArray(previous.roster)) return previous
@@ -524,6 +625,30 @@ function migrateClub(data: Record<string, unknown>): unknown {
   }) }
 }
 
+function migrateClub(data: Record<string, unknown>): unknown {
+  if (data.version === 8) return data
+  const previous = migrateProgression(data)
+  if (previous.version !== 7 || !Array.isArray(previous.roster)) return previous
+  const { trainedWeek, ...saved } = previous
+  return { ...saved, version: 8, priority: null,
+    camp: { week: trainedWeek, sessions: typeof trainedWeek === 'number' && trainedWeek > 0 ? [{ kind: 'legacy' }] : [] },
+    roster: previous.roster.map(player => record(player) ? { ...player, branches: {} } : player),
+  }
+}
+
+function validCampEntry(input: unknown, ids: readonly string[], sports: readonly Sport[]): input is CampEntry {
+  if (!record(input)) return false
+  if (input.kind === 'legacy') return true
+  if (typeof input.athlete !== 'string' || !ids.includes(input.athlete)) return false
+  if (input.kind === 'training') return input.focus === 'film' || input.focus === 'recovery'
+    || isAthleticTrait(input.focus) || sports.includes(input.focus as Sport)
+  const sport = input.sport as Sport
+  if (!sports.includes(sport)) return false
+  if (input.kind === 'drill') return TECHNICAL_SKILLS.includes(input.skill as TechnicalSkill)
+  return input.kind === 'lesson' && typeof input.signature === 'string' && Object.hasOwn(SIGNATURES, input.signature)
+    && signatureAvailable(input.signature as Signature, sport)
+}
+
 function validPlan(input: unknown): input is PlanCommand[] {
   return Array.isArray(input) && input.length <= 3
     && input.every(order => record(order) && typeof order.athlete === 'string' && typeof order.kind === 'string'
@@ -533,11 +658,11 @@ function validPlan(input: unknown): input is PlanCommand[] {
 export function readClub(raw: string): Club {
   if (raw.length > 128_000) throw new Error('This file is too large to be a club save.')
   const data: unknown = JSON.parse(raw)
-  if (!record(data) || ![1, 2, 3, 4, 5, 6, 7].includes(data.version as number) || !isMode(data.mode)) {
+  if (!record(data) || ![1, 2, 3, 4, 5, 6, 7, 8].includes(data.version as number) || !isMode(data.mode)) {
     throw new Error('This is an unsupported club save.')
   }
   const club = migrateClub(data) as Club
-  if (club.version !== 7 || !Array.isArray(club.history) || club.season !== club.history.length + 1
+  if (club.version !== 8 || !Array.isArray(club.history) || club.season !== club.history.length + 1
     || !integer(club.recruitedSeason, 0, club.season)
     || !club.history.every((entry, index) => seasonValid(entry, index + 1, true))) {
     throw new Error('The past seasons in this save are invalid.')
@@ -548,6 +673,9 @@ export function readClub(raw: string): Club {
       || !integer(player.film, 0, MAX_FILM_BONUS) || !record(player.xp) || !record(player.equipped)
       || !record(player.athletics) || !Object.keys(ATHLETIC_TRAITS).every(trait => integer(player.athletics[trait as AthleticTrait], 0, MAX_TRAIT))
       || !record(player.mastery) || SPECIALTY_NAMES.some(role => !integer(player.mastery[role], 0, MAX_MASTERY))
+      || !record(player.branches) || Object.entries(player.branches).some(([role, branch]) =>
+        !SPECIALTY_NAMES.includes(role as Specialty) || player.mastery[role as Specialty] !== MAX_MASTERY
+        || !canChooseBranch(role as Specialty, branch as Technique))
       || !record(player.technical) || !record(player.roleStarts) || !record(player.learned) || !record(player.signature)
       || SPORTS.some(sport => {
         const roles = player.roleStarts[sport]
@@ -580,8 +708,22 @@ export function readClub(raw: string): Club {
         || (keeperSlot(sport) >= 0 && !profile(club.lineups[sport][keeperSlot(sport)]).keeper))) {
     throw new Error('The lineups in this save are invalid.')
   }
-  if (!seasonValid(club, club.season) || !integer(club.trainedWeek, 0, nextFixture(club)?.week ?? seasonSchedule(club, club.season).at(-1)!.week)) {
-    throw new Error('The season schedule in this save is invalid.')
+  if (!seasonValid(club, club.season)) throw new Error('The season schedule in this save is invalid.')
+  const fixtures = seasonSchedule(club, club.season)
+  const current = fixtures[club.results.length]
+  const camp = club.camp
+  if (!record(camp) || !integer(camp.week, 0, current?.week ?? fixtures.at(-1)!.week)
+    || !Array.isArray(camp.sessions) || camp.sessions.length > CAMP_SESSIONS
+    || (camp.week === 0) !== (camp.sessions.length === 0)
+    || !camp.sessions.every((entry, index) => validCampEntry(entry, ids, seasonSports(club.mode))
+      && !camp.sessions.slice(0, index).some(before => entry.kind === 'legacy' ? before.kind === 'legacy' : sameActivity(before, entry)))) {
+    throw new Error('The training camp in this save is invalid.')
+  }
+  const priority = club.priority
+  if (priority !== null && (!record(priority) || !ids.includes(priority.athlete)
+    || !integer(priority.fixture, club.results.length, fixtures.length - 1) || !current
+    || fixtures[priority.fixture].week !== current.week || priorityLineupError(club, priority, fixtures))) {
+    throw new Error('The fixture priority in this save is invalid.')
   }
   if (club.pending !== null) {
     const upcoming = nextFixture(club)
@@ -602,7 +744,7 @@ export function readClub(raw: string): Club {
         || !club.pending.opponentPlans || club.pending.opponentPlans.some(plan => plan === null)))
       || (club.pending.focus !== undefined && (!record(club.pending.focus)
         || !isFocusForSport(club.pending.focus.id, upcoming.sport)
-        || (club.pending.focus.athlete !== undefined && !(starting?.starters ?? club.lineups[upcoming.sport])
+        || (club.pending.focus.athlete !== undefined && !(starting?.starters ?? fixtureLineup(club, upcoming).starters)
           .some((id, slot) => (starting ? fixtureAthleteName(starting, slot) : profile(id).name) === club.pending!.focus!.athlete))))
       || club.pending.turns.some(plan => !validPlan(plan))) {
       throw new Error('The current fixture in this save is invalid.')

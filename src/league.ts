@@ -38,7 +38,8 @@ export interface Fixture {
   soccer: soccer.DefenseShape
   hockey: HockeyStyle
   football: FootballStyle
-  stage: 'regular' | 'final'
+  stage: 'regular' | 'cup' | 'final'
+  day?: 'Tue' | 'Thu' | 'Sat'
 }
 
 export function rivalSignature(fixture: Pick<Fixture, 'rival' | 'sport'>) {
@@ -55,6 +56,7 @@ export interface LeagueProgress {
 
 export interface SeasonRecord {
   mode: SeasonMode
+  calendar?: 'cups'
   results: Score[]
   league: LeagueProgress | null
 }
@@ -71,6 +73,35 @@ export function schedule(mode: SeasonMode, seedOffset = 0): Fixture[] {
     return RIVALS.flatMap((rival, index) => SPORTS.map((sport, leg) => makeFixture(rival, sport, index * 2 + Math.floor(leg / 2), leg % 2)))
   }
   return [...RIVALS, RIVALS[0]].map((rival, index) => makeFixture(rival, mode, index, 0))
+}
+
+export const SAME_WEEK_RECOVERY = 6
+export const BETWEEN_WEEK_RECOVERY = 24
+
+const CUP_FIXTURES = [
+  { week: 1, sport: 'soccer', rival: RIVALS[1] },
+  { week: 2, sport: 'hockey', rival: RIVALS[2] },
+  { week: 4, sport: 'football', rival: RIVALS[0] },
+  { week: 5, sport: 'basketball', rival: RIVALS[1] },
+] as const
+
+export function seasonCalendar(record: SeasonRecord): Fixture[] {
+  const offset = record.league?.seedOffset ?? 0
+  const regular = schedule(record.mode, offset)
+  if (record.calendar !== 'cups') return regular
+  return regular.flatMap((game, index): Fixture[] => {
+    if (index % 2 === 0) return [{ ...game, day: 'Tue' }]
+    const cup = CUP_FIXTURES.find(entry => entry.week === game.week)
+    return [{ ...game, day: 'Thu' }, ...(cup ? [{ ...cup.rival, week: cup.week, sport: cup.sport,
+      seed: (4027 + offset + cup.week * 31) >>> 0, stage: 'cup', day: 'Sat' } as const] : [])]
+  })
+}
+
+export function cupTrophies(record: SeasonRecord): Sport[] {
+  return seasonCalendar(record).flatMap((fixture, index) => {
+    const score = record.results[index]
+    return fixture.stage === 'cup' && score && score[0] > score[1] ? [fixture.sport] : []
+  })
 }
 
 export function rivalPair(fixture: Fixture): readonly [Rival, Rival] {
@@ -137,9 +168,11 @@ export function leagueTable(record: SeasonRecord, season: number): LeagueRow[] {
     const totals = headToHead.get(home)!
     totals.set(away, (totals.get(away) ?? 0) + seasonPoints(score))
   }
-  schedule(record.mode).forEach((fixture, index) => {
+  let leagueIndex = 0
+  seasonCalendar(record).forEach((fixture, index) => {
+    if (fixture.stage !== 'regular') return
     const played = record.results[index]
-    const other = record.league?.otherResults[index]
+    const other = record.league?.otherResults[leagueIndex++]
     if (!played || !other) return
     const [home, away] = rivalPair(fixture)
     add('Comets', fixture.rival, played)
@@ -157,7 +190,7 @@ export function leagueTable(record: SeasonRecord, season: number): LeagueRow[] {
 }
 
 export function seasonSchedule(record: SeasonRecord, season: number): Fixture[] {
-  const regular = schedule(record.mode, record.league?.seedOffset)
+  const regular = seasonCalendar(record)
   if (!record.league || record.results.length < regular.length) return regular
   const finalists = leagueTable(record, season).slice(0, 2)
   if (!finalists.some(row => row.team === 'Comets')) return regular
@@ -166,6 +199,7 @@ export function seasonSchedule(record: SeasonRecord, season: number): Fixture[] 
   return [...regular, ...sports.map((sport, leg): Fixture => ({
     ...opponent, sport, week: regular.at(-1)!.week + 1 + Math.floor(leg / 2),
     seed: (2599 + record.league!.seedOffset + leg * 17) >>> 0, stage: 'final',
+    ...(record.calendar === 'cups' ? { day: leg % 2 === 0 ? 'Tue' : 'Thu' } as const : {}),
   }))]
 }
 
@@ -175,7 +209,7 @@ export function seasonOutcome(record: SeasonRecord, season: number): SeasonOutco
   const seasonFixtures = seasonSchedule(record, season)
   if (record.results.length < seasonFixtures.length) return undefined
   if (!record.league) return 'Finished'
-  const regular = schedule(record.mode).length
+  const regular = seasonCalendar(record).length
   if (seasonFixtures.length === regular) return 'Missed the final'
   const final = record.results.slice(regular)
   const earned = final.reduce((sum, score) => sum + seasonPoints(score), 0)
@@ -188,7 +222,7 @@ export function rivalryRecords(seasons: readonly SeasonRecord[]) {
   const totals = RIVALS.map(({ rival }) => ({ rival, wins: 0, draws: 0, losses: 0 }))
   seasons.forEach((record, index) => seasonSchedule(record, index + 1).forEach((fixture, position) => {
     const score = record.results[position]
-    if (!score) return
+    if (!score || fixture.stage === 'cup') return
     const row = totals.find(total => total.rival === fixture.rival)!
     if (score[0] > score[1]) row.wins += 1
     else if (score[0] === score[1]) row.draws += 1
