@@ -63,7 +63,7 @@ for (const sport of SPORTS) {
     } })
     const before = openClubFixture(legacy)
     const upgraded = upgradeClubFixture(legacy)
-    assert.deepEqual(upgraded.pending.start, start)
+    assert.deepEqual(upgraded.pending.start, { ...start, opponentPolicy: 1 })
     assert.deepEqual(upgraded.pending.opponentPlans, [openClubFixture(club).opponent(start.match, 1), []])
     assert.equal(upgradeClubFixture(upgraded), upgraded)
     const after = openClubFixture(load(upgraded))

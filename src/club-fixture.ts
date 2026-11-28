@@ -4,13 +4,13 @@ import * as soccer from './soccer.ts'
 import * as hockey from './hockey.ts'
 import * as football from './football.ts'
 import { clubAthlete, nextFixture, physicalProfile, ratings, settleFixture, startFixture, type Club, type Sport } from './club.ts'
-import { planTurn as basketballAI, type DefenseStyle } from './opponent.ts'
-import { planTurn as soccerAI } from './soccer-opponent.ts'
+import { planTurn as basketballAI, planTurnV1 as basketballV1, type DefenseStyle } from './opponent.ts'
+import { planTurn as soccerAI, planTurnV1 as soccerV1 } from './soccer-opponent.ts'
 import { planTurn as hockeyAI, type HockeyStyle } from './hockey-opponent.ts'
 import { planTurn as footballAI, type FootballStyle } from './football-opponent.ts'
-import { FIXTURE_START_V1, OPPONENT_POLICY_V1, type FixtureStart, type VersionedMatch } from './fixture-start.ts'
+import { FIXTURE_START_V1, OPPONENT_POLICY_V1, OPPONENT_POLICY_V2, type FixtureStart, type VersionedMatch } from './fixture-start.ts'
 import type { AthleteBuild, MatchSnapshot, PlanCommand, Plans, Team, TurnEvent } from './match.ts'
-import { TURN_LIMITS, type Fixture } from './league.ts'
+import { rivalSignature, TURN_LIMITS, type Fixture } from './league.ts'
 
 const RULES: Record<Sport, number> = {
   basketball: basketball.RULES_VERSION, soccer: soccer.RULES_VERSION,
@@ -40,16 +40,19 @@ function captureStart(club: Club, fixture: Fixture, rules: number, legacy: boole
     return ratings(athlete, fixture.sport, slot, traits)
   })
   const { sport, seed, rival } = fixture
+  const scouted = legacy ? undefined : rivalSignature(fixture)
   if (sport === 'basketball') {
     const match = basketball.createMatch(seed)
     applyLineup(lineup, sport, match, rival)
-    return { ...header, sport, match, defense: fixture.basketball }
+    if (scouted) match.athletes.find(player => player.id === `1-${scouted.slot}`)!.signature = scouted.signature
+    return { ...header, sport, match, opponentPolicy: legacy ? OPPONENT_POLICY_V1 : OPPONENT_POLICY_V2, defense: fixture.basketball }
   }
   if (sport === 'soccer') {
     const match = soccer.createMatch(seed, 0, 3, fixture.soccer)
     if (rules === soccer.PREVIOUS_RULES_VERSION) match.rulesVersion = rules
     applyLineup(lineup, sport, match, rival)
-    return { ...header, sport, match }
+    if (scouted) match.athletes.find(player => player.id === `1-${scouted.slot}`)!.signature = scouted.signature
+    return { ...header, sport, match, opponentPolicy: legacy ? OPPONENT_POLICY_V1 : OPPONENT_POLICY_V2 }
   }
   if (sport === 'hockey') {
     const match = hockey.createMatch(seed, 0, lineup)
@@ -99,13 +102,15 @@ function replay<S extends VersionedMatch, C extends PlanCommand>(
 }
 
 function replayFromStart(pending: NonNullable<Club['pending']>, start: FixtureStart) {
-  // When adding a policy, retain the v1 planners for fixtures started under v1.
-  if (start.opponentPolicy !== OPPONENT_POLICY_V1) throw new Error('Unsupported fixture opponent policy.')
   if (start.sport === 'basketball') {
-    const opponent = (match: basketball.Match, team: Team) => basketballAI(match, team, start.defense)
+    const plan = start.opponentPolicy === OPPONENT_POLICY_V1 ? basketballV1 : basketballAI
+    const opponent = (match: basketball.Match, team: Team) => plan(match, team, start.defense)
     return { sport: start.sport, defense: start.defense, ...replay(pending, start.match, opponent, basketball.resolveTurn) }
   }
-  if (start.sport === 'soccer') return { sport: start.sport, ...replay(pending, start.match, soccerAI, soccer.resolveTurn) }
+  if (start.sport === 'soccer') {
+    const opponent = start.opponentPolicy === OPPONENT_POLICY_V1 ? soccerV1 : soccerAI
+    return { sport: start.sport, ...replay(pending, start.match, opponent, soccer.resolveTurn) }
+  }
   if (start.sport === 'hockey') {
     const opponent = (match: hockey.Match, team: Team) => hockeyAI(match, team, start.style)
     return { sport: start.sport, style: start.style, ...replay(pending, start.match, opponent, hockey.resolveTurn) }

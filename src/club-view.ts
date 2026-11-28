@@ -15,7 +15,7 @@ import { SHAPE_NAMES } from './soccer.ts'
 import { HOCKEY_STYLES } from './hockey-opponent.ts'
 import { FOOTBALL_STYLES } from './football-opponent.ts'
 import type { Technique } from './match.ts'
-import { leagueTable, rivalPair, rivalryRecords, RIVALS, schedule, seasonOutcome, seasonSchedule, seasonSports, SPORTS, type SeasonRecord } from './league.ts'
+import { leagueTable, rivalPair, rivalSignature, rivalryRecords, RIVALS, schedule, seasonOutcome, seasonSchedule, seasonSports, SPORTS, type SeasonRecord } from './league.ts'
 
 export interface ClubView {
   getClub(): Club | null
@@ -183,6 +183,9 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       soccer: SHAPE_NAMES[fixture.soccer], basketball: DEFENSE_NAMES[fixture.basketball],
       hockey: HOCKEY_STYLES[fixture.hockey], football: FOOTBALL_STYLES[fixture.football],
     }[fixture.sport]
+    const scoutedSignature = club.pending
+      ? club.pending.start?.match.athletes.find(player => player.team === 1 && player.signature)?.signature
+      : fixture && rivalSignature(fixture)?.signature
     const startingStamina = fixture && !club.pending ? club.lineups[fixture.sport]
       .filter((_, slot) => fixture.sport !== 'hockey' || slot < 5 || slot === keeperSlot('hockey'))
       .map(id => ratings(clubAthlete(club, id), fixture.sport).stamina) : []
@@ -233,6 +236,8 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       ${outcome && outcome !== 'Finished' ? `<p class="league-outcome"><b>${outcome}</b>${rank ? ` · League rank ${rank}` : ''}</p>` : ''}
       <p class="season-record">${wins} wins · ${draws} draws · ${losses} losses · ${wins * 3 + draws} league points${titles ? ` · ${titles} ${titles === 1 ? 'title' : 'titles'}` : ''}</p>
       ${startingStamina.length ? `<p class="muted club-readiness">Next lineup · Avg stamina ${averageStamina} · ${tired} of ${startingStamina.length} below 65</p>` : ''}
+      ${scoutedSignature ? `<p class="muted"><b>Rival signature · ${SIGNATURES[scoutedSignature].label}</b>
+        <br>${SIGNATURES[scoutedSignature].detail}</p>` : ''}
       ${focusPicker}
       <div class="club-actions">${fixture ? `<button class="primary" data-action="play">${club.pending ? 'Resume fixture' : 'Play fixture'}</button>`
         : '<button data-action="new">Start another season</button>'}</div>

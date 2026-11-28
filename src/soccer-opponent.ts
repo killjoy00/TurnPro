@@ -1,12 +1,14 @@
 import { clamp, distance } from './math.ts'
 import { findAthlete, type Team } from './match.ts'
+import { laneReaders, threatensLane } from './opponent-lanes.ts'
 import {
-  attackGoal, commandTarget, direction, legalCommands, passEstimate, previewPass, runDestination, shotEstimate, startsOffside, HALF_TURNS, PITCH,
+  attackGoal, baseAssignment, commandTarget, direction, isPass, legalCommands, passEstimate,
+  previewPass, runDestination, shotEstimate, startsOffside, HALF_TURNS, PITCH, SHOT_RANGE,
   PREVIOUS_RULES_VERSION,
-  type Command, type Match, TURN_LIMIT,
+  type Command, type Footballer, type Match, TURN_LIMIT,
 } from './soccer.ts'
 
-export function planTurn(match: Match, team: Team): Command[] {
+export function planTurnV1(match: Match, team: Team): Command[] {
   if (match.turn > TURN_LIMIT) return []
   const holder = findAthlete(match.athletes, match.holder)
   const squad = match.athletes.filter(player => player.team === team)
@@ -78,6 +80,109 @@ export function planTurn(match: Match, team: Team): Command[] {
           + Math.abs(left.position.y - holder.position.y) - Math.abs(right.position.y - holder.position.y)
       })
     plan.push(...cover.slice(0, match.commandLimit - plan.length))
+  }
+  return plan
+}
+
+function attackWithSignatures(match: Match, holder: Footballer, squad: Footballer[], defense: Footballer[], baseline: Command[]): Command[] {
+  const available = legalCommands(match, holder.id)
+  const passes = available.filter(isPass)
+  const projected = defense.map(player => ({ ...player, position: baseAssignment(match, player.id).target }))
+  const readers = laneReaders(projected, player => player.position)
+  const approaches = { ...match, athletes: [...squad, ...projected] }
+  const delivery = (pass: ReturnType<typeof previewPass>, kind: (typeof passes)[number]['kind']) =>
+    pass.offside || ((kind === 'pass' || kind === 'through') && threatensLane(readers, holder.position, pass.destination))
+      ? 0 : pass.chance / 100
+  const shot = shotEstimate(match, holder)
+  let bestValue = baseline[0]?.kind === 'shoot' ? shot.goal + 2 : 8
+  let best: Command[] | undefined
+
+  for (const runner of squad.filter(player => player.id !== holder.id && player.signature === 'cut-and-finish')) {
+    for (const cut of legalCommands(match, runner.id).filter(command => command.kind === 'cut-and-finish')) {
+      for (const pass of passes.filter(command => command.target === runner.id)) {
+        if (match.commandLimit < 2) break
+        const reception = previewPass(match, pass, [cut])
+        const look = shotEstimate(approaches, { ...runner, position: reception.destination })
+        const chance = delivery(reception, pass.kind)
+        if (look.range <= SHOT_RANGE && chance >= 0.62 && look.goal * chance > bestValue) {
+          bestValue = look.goal * chance
+          best = [pass, cut]
+        }
+      }
+      if (match.commandLimit < 3) continue
+      for (const first of passes.filter(command => command.kind === 'pass')) {
+        const relay = findAthlete(squad, first.target)
+        const second = legalCommands(match, relay.id).find(order => order.kind === 'relay' && order.target === runner.id)
+        if (!second) continue
+        const reception = previewPass(match, first, [second])
+        const start = delivery(reception, first.kind)
+        const source = { ...relay, position: reception.destination }
+        const end = runDestination(match, runner, cut.target)
+        if (start < 0.66 || distance(source.position, end) > 37 || threatensLane(readers, source.position, end)) continue
+        const relayField = { ...approaches, athletes: approaches.athletes.map(player => player.id === runner.id
+          ? { ...runner, position: end } : player) }
+        if (startsOffside(relayField, source, { ...runner, position: end })) continue
+        const finish = passEstimate(relayField, source, end, 'pass').chance / 100
+        const look = shotEstimate(relayField, { ...runner, position: end })
+        const value = look.goal * start * finish - 1
+        if (look.range <= SHOT_RANGE && finish >= 0.66 && value > bestValue) {
+          bestValue = value
+          best = [first, second, cut]
+        }
+      }
+    }
+  }
+  if (best) return best
+
+  const initial = baseline[0]
+  if (initial && (initial.kind === 'pass' || initial.kind === 'through')) {
+    const reception = previewPass(match, initial, baseline)
+    if (threatensLane(readers, holder.position, reception.destination)) {
+      const alternatives = passes.map(pass => {
+        const preview = previewPass(match, pass, [])
+        const chance = delivery(preview, pass.kind)
+        const progress = direction(match, holder.team) * (preview.destination.x - holder.position.x)
+        return { pass, chance, value: chance * 60 + progress * 0.9 }
+      }).filter(candidate => candidate.chance >= 0.62).sort((a, b) => b.value - a.value)
+      const otherPlay = available.find(command => command.kind === 'shoot' && shot.goal >= 16)
+        ?? alternatives[0]?.pass ?? available.find(command => command.kind === 'carry' || command.kind === 'shoot')
+      if (otherPlay) return [otherPlay]
+    }
+  }
+  return baseline
+}
+
+export function planTurn(match: Match, team: Team): Command[] {
+  const baseline = planTurnV1(match, team)
+  if (match.turn > TURN_LIMIT || match.rulesVersion === PREVIOUS_RULES_VERSION
+    || !match.athletes.some(player => player.signature === 'cut-and-finish' || player.signature === 'jump-lane')) return baseline
+  const holder = findAthlete(match.athletes, match.holder)
+  const squad = match.athletes.filter(player => player.team === team)
+  const opposition = match.athletes.filter(player => player.team !== team)
+  if (holder.team === team) return attackWithSignatures(match, holder, squad, opposition, baseline)
+
+  const lanes = legalCommands(match, holder.id).filter(command => command.kind === 'pass' || command.kind === 'through')
+    .map(pass => previewPass(match, pass, []).destination)
+  const readers = laneReaders(squad.filter(player => player.slot !== 0), player => baseAssignment(match, player.id).target)
+  const reserved = readers.find(player => lanes.some(to => threatensLane([player], holder.position, to)))
+  const plan = baseline.filter(order => order.athlete !== reserved?.id)
+  const goal = attackGoal(match, holder.team)
+  const cutter = opposition.filter(player => player.signature === 'cut-and-finish'
+    && legalCommands(match, player.id).some(command => command.kind === 'cut-and-finish'))
+    .sort((a, b) => distance(a.position, goal) - distance(b.position, goal))[0]
+  if (cutter) {
+    const eligible = squad.filter(player => player.id !== reserved?.id
+      && direction(match, holder.team) * (player.position.x - cutter.position.x) >= -2
+      && legalCommands(match, player.id).some(order => order.kind === 'hold'))
+      .sort((a, b) => distance(a.position, cutter.position) - distance(b.position, cutter.position))
+    const marker = eligible[0]
+    if (marker) {
+      const index = plan.findIndex(order => order.athlete === marker.id)
+      const hold = { athlete: marker.id, kind: 'hold' } as const
+      if (index >= 0) plan[index] = hold
+      else if (plan.length < match.commandLimit) plan.push(hold)
+      else plan[plan.length - 1] = hold
+    }
   }
   return plan
 }

@@ -41,6 +41,13 @@ export interface Fixture {
   stage: 'regular' | 'final'
 }
 
+export function rivalSignature(fixture: Pick<Fixture, 'rival' | 'sport'>) {
+  const { rival, sport } = fixture
+  if (sport !== 'basketball' && sport !== 'soccer') return
+  if (rival === 'Breakers') return { signature: 'cut-and-finish', slot: sport === 'basketball' ? 1 : 9 } as const
+  if (rival === 'Rovers') return { signature: 'jump-lane', slot: sport === 'basketball' ? 2 : 7 } as const
+}
+
 export interface LeagueProgress {
   seedOffset: number
   otherResults: Score[]
