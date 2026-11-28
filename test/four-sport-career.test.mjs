@@ -4,7 +4,7 @@ import {
   clubAthlete, createClub, equip, nextFixture, nextSeason, ratings, readClub, recruit, setStarter, train,
 } from '../src/club.ts'
 import { beginClubFixture, openClubFixture, saveClubTurn } from '../src/club-fixture.ts'
-import { leagueTable, schedule, seasonOutcome, seasonSchedule, SPORTS, TURN_LIMITS } from '../src/league.ts'
+import { cupTrophies, leagueTable, schedule, seasonCalendar, seasonOutcome, seasonSchedule, SPORTS, TURN_LIMITS } from '../src/league.ts'
 import * as basketball from '../src/basketball.ts'
 import * as soccer from '../src/soccer.ts'
 import * as hockey from '../src/hockey.ts'
@@ -17,7 +17,7 @@ import { planTurn as footballAI } from '../src/football-opponent.ts'
 test('film transfers across sports while weekly technique practice and recovery remain distinct choices', () => {
   const original = createClub('all')
   const film = train(original, 'reed', 'film')
-  assert.throws(() => train(film, 'reed', 'hockey'), /used this week/)
+  assert.equal(train(film, 'reed', 'hockey').camp.sessions.length, 2)
   for (const sport of SPORTS) {
     assert.equal(ratings(clubAthlete(film, 'reed'), sport).awareness, 10)
     assert.equal(clubAthlete(film, 'reed').xp[sport], 0)
@@ -30,7 +30,7 @@ test('film transfers across sports while weekly technique practice and recovery 
   const recovered = train(original, 'reed', 'recovery')
   assert.equal(clubAthlete(recovered, 'reed').fatigue, 15)
   assert.equal(clubAthlete(recovered, 'reed').film, 0)
-  assert.throws(() => train(recovered, 'reed', 'film'), /used this week/)
+  assert.throws(() => train(recovered, 'reed', 'recovery'), /already used/)
 })
 
 test('hockey line changes use club reserves and only credit players after they take the ice', () => {
@@ -99,25 +99,28 @@ function playFixture(club) {
   return active
 }
 
-test('a four-sport season plays all 12 regular fixtures, then a qualifying club plays four final legs', () => {
+test('a four-sport season plays 12 league fixtures, four cups, and four legs for finalists', () => {
   let club = train(createClub('all'), 'reed', 'film')
   assert.deepEqual(schedule('all').map(fixture => fixture.week), [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6])
-  for (let i = 0; i < 12; i++) {
-    assert.equal(nextFixture(club).sport, SPORTS[i % 4])
+  const itinerary = seasonCalendar(club)
+  assert.deepEqual(itinerary.filter(game => game.stage === 'cup').map(game => game.sport), ['soccer', 'hockey', 'football', 'basketball'])
+  for (const game of itinerary) {
+    assert.deepEqual(nextFixture(club), game)
     club = playFixture(club)
   }
   assert.ok(leagueTable(club, 1).every(row => row.played === 12))
   assert.ok(SPORTS.every(sport => clubAthlete(club, 'reed').xp[sport] >= 3))
   assert.deepEqual(readClub(JSON.stringify(club)), club)
 
-  const finalist = { ...club, results: schedule('all').map(() => [2, 0]) }
-  assert.deepEqual(seasonSchedule(finalist, 1).slice(12).map(fixture => fixture.sport), SPORTS)
+  const finalist = { ...club, results: itinerary.map(() => [2, 0]) }
+  assert.deepEqual(seasonSchedule(finalist, 1).slice(16).map(fixture => fixture.sport), SPORTS)
   let completed = finalist
   while (nextFixture(completed)) completed = playFixture(completed)
-  assert.equal(completed.results.length, 16)
+  assert.equal(completed.results.length, 20)
   assert.ok(['Champion', 'Runner-up'].includes(seasonOutcome(completed, 1)))
   const newSeason = nextSeason(readClub(JSON.stringify(completed)), 'hockey')
   assert.equal(newSeason.history[0].mode, 'all')
+  assert.equal(cupTrophies(newSeason.history[0]).length, 4)
   assert.equal(clubAthlete(newSeason, 'reed').film, 1)
   assert.deepEqual(readClub(JSON.stringify(newSeason)), newSeason)
 })
@@ -129,14 +132,14 @@ test('a version 3 club resumes the same saved fixture with new development initi
   club = saveClubTurn(club, [], result.match, undefined, session.opponent(session.match, 1))
   const { basketball: basketballLine, soccer: soccerLine } = club.lineups
   const oldSave = {
-    ...club, version: 3, lineups: { basketball: basketballLine, soccer: soccerLine },
+    ...club, version: 3, trainedWeek: 0, lineups: { basketball: basketballLine, soccer: soccerLine },
     roster: club.roster.map(({ film, xp, equipped, ...player }) => ({
       ...player, xp: { basketball: xp.basketball, soccer: xp.soccer },
       equipped: { basketball: equipped.basketball, soccer: equipped.soccer },
     })),
   }
   const migrated = readClub(JSON.stringify(oldSave))
-  assert.equal(migrated.version, 7)
+  assert.equal(migrated.version, 8)
   assert.deepEqual(openClubFixture(migrated).history, openClubFixture(club).history)
   assert.deepEqual(openClubFixture(migrated).match, openClubFixture(club).match)
   assert.deepEqual(migrated, club)

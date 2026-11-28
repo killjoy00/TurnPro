@@ -517,3 +517,30 @@ h1 em { color: var(--sport-glow); }
 }
 html[data-contrast="high"] .scoreboard { background: #101c21; }
 html[data-contrast="high"] .marker { border-width: 2px; }
+
+.fixture-schedule td small { display: block; color: var(--muted); font-size: .72rem; }
+.fixture-schedule .cup-fixture td:nth-child(2) small, .cup-titles { color: var(--sport-glow); }
+.camp, .mastery-branch, .fixture-priority { margin-block: .85rem; padding: .7rem; border: 1px solid var(--line); border-radius: 6px; }
+.camp h4, .mastery-branch h4 { margin: 0 0 .35rem; }
+.camp p, .fixture-priority p, .mastery-branch p { font-size: .82rem; margin-block: .25rem .5rem; }
+.camp ul { margin-block: .35rem; padding-left: 1.2rem; font-size: .81rem; }
+.camp-balance { color: var(--lime); font-size: .85rem; }
+.branch-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr)); gap: .55rem; }
+.branch-options div { background: #10242a; border-radius: 5px; padding: .55rem; font-size: .85rem; }
+.branch-options button, .fixture-priority button {
+  color: inherit; background: #233c3c; border: 1px solid var(--line); border-radius: 5px;
+  padding: .4rem .6rem; margin-block: .2rem; font-size: .82rem;
+}
+.branch-options button:enabled:hover, .fixture-priority button:enabled:hover { border-color: var(--lime); }
+.week-itinerary { list-style: none; margin: .5rem 0; padding: 0; display: grid; gap: .25rem; }
+.week-itinerary li {
+  display: flex; justify-content: space-between; gap: .55rem; align-items: center;
+  border-radius: 4px; background: #102228; padding: .46rem .55rem; font-size: .81rem;
+}
+.week-itinerary li small { color: var(--muted); white-space: nowrap; }
+.week-itinerary .current-fixture { border-left: 3px solid var(--lime); }
+.week-itinerary .current-fixture small { color: var(--lime); }
+.full-calendar { font-size: .84rem; }
+.full-calendar summary { margin-block: .55rem; cursor: pointer; }
+.priority-error:not(:empty) { color: var(--away); }
+.priority-error:empty { display: none; }

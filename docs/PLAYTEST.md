@@ -12,7 +12,7 @@ Try the first coached play without hints beyond the game. Rotate the starting sp
 | Soccer | Beat the press or practice a cross, then play a quick match. | Can you tell how the receiver's run changes the pass, and why a pass went through or got intercepted? |
 | Ice hockey | Practice a screened one-timer, then play a quick match. | Try the one-timer preview before and after queuing the screen. Explain what the screen adds and when to change lines. |
 | American football | Practice third and five, then play a quick match. | Compare the queued pass with and without protection. Explain a fourth-down choice. |
-| Club season | Start an **All four sports** season, make a lineup and training decision, and complete the first two fixtures. Open a fixture and reload partway through. | Which athlete did you rotate? Why did you choose sport XP, film, or recovery? Did the next lineup's stamina and replayed turn match what you expected? |
+| Club season | Start an **All four sports** season, book both camp sessions, protect an athlete for Saturday, and complete the first cup week. Open a fixture and reload partway through. | Who played in place of the athlete you protected, and who earned the appearance? Which camp sessions were worth giving up? Did the next lineup's stamina and replayed turn match what you expected? |
 
 For each sport, note the first time you had to guess what to do, one result you can explain, and whether you would play another match. Reopen **Playtest feedback** and select **Download feedback** when done. If you already have a club, export its save before using a fresh test profile.
 

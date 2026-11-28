@@ -1,10 +1,23 @@
 import type { Sport } from './league.ts'
+import type { Technique } from './match.ts'
 
 export const SPECIALTY_NAMES = ['Playmaker', 'Defender', 'Finisher'] as const
 export type Specialty = typeof SPECIALTY_NAMES[number]
 export type Mastery = Record<Specialty, number>
 export const SIGNATURE_MASTERY = 3
 export const MAX_MASTERY = 6
+
+export const MASTERY_BRANCHES = {
+  Playmaker: ['thread-pass', 'second-wind'],
+  Defender: ['read-play', 'anchor'],
+  Finisher: ['clean-look', 'quick-step'],
+} as const satisfies Record<Specialty, readonly Technique[]>
+export type MasteryBranches = Partial<Record<Specialty, Technique>>
+
+export function canChooseBranch(role: Specialty, branch: Technique): boolean {
+  const choices: readonly Technique[] = MASTERY_BRANCHES[role]
+  return choices.includes(branch)
+}
 
 export const TECHNICAL_SKILLS = ['passing', 'finishing', 'defense'] as const
 export type TechnicalSkill = typeof TECHNICAL_SKILLS[number]

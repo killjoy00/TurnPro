@@ -88,7 +88,7 @@ try {
 
     assert.equal(await active(), 'Open club season')
     await press(0)
-    assert.equal(await active(), 'All four sports · 12 fixtures')
+    assert.equal(await active(), 'All four sports · 12 league + 4 cups')
     for (let step = 0; step < index + 2; step++) await press(15)
     assert.equal(await active(), `${season} · 4 fixtures`)
     await press(0)

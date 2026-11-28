@@ -6,7 +6,8 @@ import { planTurn as basketballAI } from '../src/opponent.ts'
 import { planTurn as soccerAI } from '../src/soccer-opponent.ts'
 import { planTurn as hockeyAI } from '../src/hockey-opponent.ts'
 import { planTurn as footballAI } from '../src/football-opponent.ts'
-import { clubAthlete, createClub, keeperSlot, nextFixture, profile, recruit, setStarter, train } from '../src/club.ts'
+import { campSessions, clubAthlete, createClub, keeperSlot, nextFixture, profile, recruit, setStarter, train } from '../src/club.ts'
+import { seasonCalendar } from '../src/league.ts'
 import { beginClubFixture, openClubFixture, saveClubTurn } from '../src/club-fixture.ts'
 
 const matches = Number(process.argv[2] ?? 500)
@@ -63,9 +64,9 @@ const career = ['stock', 'rotation', 'rotation + recovery'].map(policy => {
   for (let season = 0; season < seasons; season++) {
     let club = recruit(createClub('all'), 'imani')
     club.league.seedOffset = season * 257
-    for (let fixture = 0; fixture < 12; fixture++) {
-      const { sport, week } = nextFixture(club)
-      if (policy === 'rotation + recovery' && club.trainedWeek !== week) {
+    for (let fixture = 0; fixture < seasonCalendar(club).length; fixture++) {
+      const { sport } = nextFixture(club)
+      if (policy === 'rotation + recovery' && campSessions(club).length === 0) {
         const tired = [...club.roster].sort((a, b) => b.fatigue - a.fatigue)
           .find(player => club.lineups[sport].includes(player.id) && player.fatigue >= 12)
         if (tired) {

@@ -24,7 +24,8 @@ test('training and lineup decisions keep sport skills separate and share awarene
   assert.equal(ratings(reed, 'soccer').passing, ratings(original, 'soccer').passing + 1)
   assert.deepEqual(ratings(reed, 'basketball'), ratings(original, 'basketball'))
   assert.equal(ratings(reed, 'basketball').awareness, ratings(reed, 'soccer').awareness)
-  assert.throws(() => train(trained, 'reed', 'basketball'), /used this week/)
+  assert.throws(() => train(trained, 'reed', 'soccer'), /already used/)
+  assert.equal(train(trained, 'reed', 'basketball').camp.sessions.length, 2)
   const finished = specialize(trained, 'reed', 'Finisher')
   assert.ok(ratings(clubAthlete(finished, 'reed'), 'soccer').finishing > ratings(reed, 'soccer').finishing)
   assert.ok(ratings(clubAthlete(finished, 'reed'), 'soccer').passing < ratings(reed, 'soccer').passing)
@@ -45,7 +46,7 @@ test('a club save restores an active fixture, applies fatigue, and completes all
   }
   for (let i = 0; i < 6; i += 1) {
     const fixture = nextFixture(club)
-    if (fixture.week > club.trainedWeek) club = train(club, 'reed', fixture.sport)
+    if (fixture.week > club.camp.week) club = train(club, 'reed', fixture.sport)
     club = beginClubFixture(club)
     let match = openClubFixture(club)
     assert.equal(match.match.teams[1], fixture.rival)
@@ -90,7 +91,7 @@ test('abilities unlock by specialty and sport, and the club carries them into an
   assert.throws(() => equip(club, 'reed', 'basketball', 'thread-pass'), /locked/)
   while (nextFixture(club)) {
     const fixture = nextFixture(club)
-    if (club.trainedWeek < fixture.week) club = train(club, 'reed', 'basketball')
+    if (club.camp.week < fixture.week) club = train(club, 'reed', 'basketball')
     club = beginClubFixture(club)
     let session = openClubFixture(club)
     while (club.pending) {
@@ -106,7 +107,7 @@ test('abilities unlock by specialty and sport, and the club carries them into an
   assert.equal(club.season, 2)
   assert.deepEqual(club.history, [{ mode: 'both', results: previous, league }])
   assert.equal(club.results.length, 0)
-  assert.equal(club.trainedWeek, 0)
+  assert.equal(club.camp.week, 0)
   assert.throws(() => equip(club, 'reed', 'soccer', 'thread-pass'), /locked/)
   club = equip(equip(club, 'reed', 'basketball', 'thread-pass'), 'reed', 'soccer', 'second-wind')
   assert.equal(ratings(clubAthlete(club, 'reed'), 'basketball').technique, 'thread-pass')
@@ -120,8 +121,8 @@ test('first-season saves from the previous build migrate without losing the acti
   let club = beginClubFixture(recruit(train(createClub('both'), 'reed', 'basketball'), 'imani'))
   const resolved = resolveClubTurn(club, openClubFixture(club))
   club = resolved.club
-  const { version, season, history, recruitedSeason, roster, league, ...state } = club
-  const v1 = { ...state, version: 1, roster: roster.map(({ equipped, mastery, technical, ...player }) => player) }
+  const { version, season, history, recruitedSeason, roster, league, camp, priority, ...state } = club
+  const v1 = { ...state, version: 1, trainedWeek: camp.week, roster: roster.map(({ equipped, mastery, technical, branches, ...player }) => player) }
   const migrated = readClub(JSON.stringify(v1))
   const reed = clubAthlete(club, 'reed')
   assert.equal(reed.mastery.Playmaker, 1)

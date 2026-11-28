@@ -1,13 +1,13 @@
 import { FOCUS_XP, isFocusForSport, MATCH_FOCUSES, type FocusId } from './match-focus.ts'
 import {
-  availableProspects, baseSkill, canLearnSignature, canTrainTechnical, clubAthlete, createClub, development, keeperSlot, MAX_FILM_BONUS, nextFixture, nextSeason, profile, ratings, ROLES,
+  availableProspects, baseSkill, CAMP_SESSIONS, campSessions, canBookCamp, canLearnSignature, canTrainTechnical, clubAthlete, createClub, development, fixtureLineup, keeperSlot, MAX_FILM_BONUS, nextFixture, nextSeason, profile, ratings, RECOVERY_SESSION, RESTED_FIXTURE_RECOVERY, ROLES,
   roleName, roleProgress, SPECIALTIES, TECHNIQUES, unlocked, unlockRequirement,
   type Club, type SeasonMode, type Specialty, type Sport, type TrainingFocus,
 } from './club.ts'
 import { SIGNATURES, SIGNATURE_XP, signatureAvailable, type Signature } from './athlete-abilities.ts'
 import { ATHLETIC_TRAITS, isAthleticTrait, MAX_TRAIT, type AthleticTrait } from './athletics.ts'
 import {
-  DRILLS, MAX_MASTERY, MAX_TECHNICAL_RANK, SIGNATURE_MASTERY, SPECIALTY_NAMES, specialtyRank, TECHNICAL_PREREQUISITE,
+  DRILLS, MASTERY_BRANCHES, MAX_MASTERY, MAX_TECHNICAL_RANK, SIGNATURE_MASTERY, SPECIALTY_NAMES, specialtyRank, TECHNICAL_PREREQUISITE,
   TECHNICAL_SKILLS, type TechnicalSkill,
 } from './progression.ts'
 import { DEFENSE_NAMES } from './opponent.ts'
@@ -15,7 +15,7 @@ import { SHAPE_NAMES } from './soccer.ts'
 import { HOCKEY_STYLES } from './hockey-opponent.ts'
 import { FOOTBALL_STYLES } from './football-opponent.ts'
 import type { Technique } from './match.ts'
-import { leagueTable, rivalPair, rivalSignature, rivalryRecords, RIVALS, schedule, seasonOutcome, seasonSchedule, seasonSports, SPORTS, type SeasonRecord } from './league.ts'
+import { BETWEEN_WEEK_RECOVERY, cupTrophies, leagueTable, rivalPair, rivalSignature, rivalryRecords, RIVALS, SAME_WEEK_RECOVERY, seasonOutcome, seasonSchedule, seasonSports, SPORTS, type Fixture, type SeasonRecord } from './league.ts'
 
 export interface ClubView {
   getClub(): Club | null
@@ -23,6 +23,8 @@ export interface ClubView {
   start(focus?: FocusId): void
   recruit(id: string): void
   train(id: string, focus: TrainingFocus): void
+  chooseBranch(id: string, branch: Technique): void
+  prioritize(id: string, fixture: number | null): void
   trainTechnical(id: string, sport: Sport, skill: TechnicalSkill): void
   specialize(id: string, choice: Specialty): void
   equip(id: string, sport: Sport, technique: Technique | null): void
@@ -35,6 +37,9 @@ export interface ClubView {
 
 const SPORT: Record<Sport, string> = { basketball: 'Basketball', soccer: 'Soccer', hockey: 'Ice hockey', football: 'American football' }
 const TRAITS = Object.keys(ATHLETIC_TRAITS) as AthleticTrait[]
+const competition = (game: Fixture) => game.stage === 'cup' ? 'Cup' : game.stage === 'final' ? 'Club final'
+  : game.rival === 'Forge' ? 'League rivalry' : 'League'
+const matchup = (game: Fixture) => `${game.day ? game.day + ' · ' : ''}${SPORT[game.sport]} ${competition(game).toLowerCase()} vs ${game.rival}`
 const seasonOutcomeByIndex = (record: SeasonRecord, index: number) => seasonOutcome(record, index + 1)
 
 export function mountClub(container: HTMLElement, controller: ClubView, signal: AbortSignal) {
@@ -54,7 +59,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         <h2>Comets club</h2>
         <p>${club ? 'Choose a schedule for the next season with your existing club.' : 'Choose a schedule for your solo season.'}</p>
         <div class="club-actions" data-controller-row>
-          <button class="primary" data-season="all">All four sports · 12 fixtures</button>
+          <button class="primary" data-season="all">All four sports · 12 league + 4 cups</button>
           <button data-season="both">Basketball &amp; soccer · 6 fixtures</button>
           <button data-season="basketball">Basketball · 4 fixtures</button>
           <button data-season="soccer">Soccer · 4 fixtures</button>
@@ -62,21 +67,31 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
           ${club ? '<button data-action="cancel">Back to completed season</button>' : ''}
         </div>
       </section>${saveControls(Boolean(club))}
-      <p class="club-status" role="status">${message}</p>`
+      <p class="club-status" role="status"></p>`
+      container.querySelector('.club-status')!.textContent = message
       return
     }
 
     const player = clubAthlete(club, athlete)
     const info = profile(athlete)
-    const regular = schedule(club.mode)
-    const scheduleRows = seasonSchedule(club, club.season).map((game, index) => {
+    const games = seasonSchedule(club, club.season)
+    const regular = games.filter(game => game.stage === 'regular')
+    const scheduleRows = games.map((game, index) => {
       const score = club.results[index]
       const active = index === club.results.length
-      const result = score ? `${score[0]}–${score[1]} · ${score[0] === score[1] ? 'Draw' : score[0] > score[1] ? 'Win' : 'Loss'}`
-        : active ? (club.pending ? 'In progress' : 'Up next') : 'Scheduled'
-      return `<tr ${active ? 'class="up-next"' : ''}><td>${game.stage === 'final' ? 'Final' : game.week}</td><td>${SPORT[game.sport]}</td><td>${game.rival}</td><td>${result}</td></tr>`
+      const result = score ? `${score[0]}–${score[1]} · ${score[0] === score[1] ? 'Draw' : score[0] > score[1]
+        ? game.stage === 'cup' ? 'Cup won' : 'Win' : 'Loss'}` : active ? (club.pending ? 'In progress' : 'Up next') : 'Scheduled'
+      return `<tr class="${active ? 'up-next ' : ''}${game.stage === 'cup' ? 'cup-fixture' : ''}">
+        <td>${game.day ? `W${game.week} · ${game.day}` : game.week}</td><td>${SPORT[game.sport]}<small>${competition(game)}</small></td>
+        <td>${game.rival}</td><td>${result}${club.priority?.fixture === index ? `<small>${profile(club.priority.athlete).name} prioritized</small>` : ''}</td></tr>`
     }).join('')
-    const regularResults = club.results.slice(0, regular.length)
+    const weekGames = fixture ? games.flatMap((game, index) => {
+      if (game.week !== fixture.week) return []
+      const score = club.results[index]
+      return [`<li class="${index === club.results.length ? 'current-fixture' : ''}">
+        <b>${matchup(game)}</b><small>${score ? score.join('–') : index === club.results.length ? 'Up next' : 'Scheduled'}</small></li>`]
+    }).join('') : ''
+    const regularResults = club.results.filter((_, index) => games[index]?.stage === 'regular')
     const wins = regularResults.filter(([a, b]) => a > b).length
     const draws = regularResults.filter(([a, b]) => a === b).length
     const losses = regularResults.length - wins - draws
@@ -86,7 +101,25 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     const completed = [...club.history.map(seasonOutcomeByIndex), outcome]
     const titles = completed.filter(result => result === 'Champion').length
     const editable = fixture && !club.pending
-    const canTrain = editable && club.trainedWeek !== fixture.week
+    const booked = campSessions(club)
+    const campLeft = CAMP_SESSIONS - booked.length
+    const canTrain = editable && campLeft > 0
+    const campTraining = (focus: TrainingFocus) => canTrain && canBookCamp(club, { kind: 'training', athlete, focus })
+    const rotation = fixture && fixtureLineup(club, fixture)
+    const priority = club.priority
+    const later = games.flatMap((game, index) => fixture && game.week === fixture.week && index > club.results.length
+      ? [{ game, index }] : [])
+    const cupTitles = [...club.history, club].flatMap(cupTrophies).length
+    const thisSeasonCups = cupTrophies(club)
+    const campLabels = booked.map(entry => {
+      if (entry.kind === 'legacy') return 'Earlier training session'
+      const name = profile(entry.athlete).name
+      if (entry.kind === 'lesson') return `${name} · ${SIGNATURES[entry.signature].label}`
+      if (entry.kind === 'drill') return `${name} · ${DRILLS[entry.sport][entry.skill]} drill`
+      const focus = entry.focus
+      return `${name} · ${focus === 'film' ? 'Film study' : focus === 'recovery' ? 'Recovery' : isAthleticTrait(focus)
+        ? ATHLETIC_TRAITS[focus].name : SPORT[focus] + ' practice'}`
+    })
     const allowedSports = seasonSports(club.mode)
     const roster = club.roster.map(entry => {
       const data = profile(entry.id)
@@ -117,7 +150,8 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       const options = known.map(key => `<option value="${key}" ${equipped === key ? 'selected' : ''}>
         ${SIGNATURES[key].label} · ${SIGNATURES[key].slot}</option>`).join('')
       const courses = (Object.keys(SIGNATURES) as Signature[]).filter(key => signatureAvailable(key, sport) && !known.includes(key))
-      const available = courses.filter(key => canTrain && allowedSports.includes(sport) && canLearnSignature(player, sport, key))
+      const available = courses.filter(key => canTrain && allowedSports.includes(sport) && canLearnSignature(player, sport, key)
+        && canBookCamp(club, { kind: 'lesson', athlete, sport, signature: key }))
       const lessons = courses.map(key => {
         const ability = SIGNATURES[key]
         return `<div class="signature-lesson"><small><b>${ability.label}</b> · ${ability.slot} · ${ability.specialty} · ${SIGNATURE_MASTERY} mastery · ${SIGNATURE_XP} sport XP
@@ -136,6 +170,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       const lesson = TECHNICAL_SKILLS.map(skill => {
         const rank = player.technical[sport][skill]
         const canDrill = canTrain && allowedSports.includes(sport) && canTrainTechnical(player, sport, skill)
+          && canBookCamp(club, { kind: 'drill', athlete, sport, skill })
         return `<div class="technical-drill"><span>${DRILLS[sport][skill]} <small>${rank}/${MAX_TECHNICAL_RANK}</small></span>
           ${canDrill ? `<button type="button" class="top-action" data-drill="${skill}" data-sport="${sport}"
             aria-label="Train ${DRILLS[sport][skill].toLowerCase()} in ${SPORT[sport]}">Train</button>` : ''}</div>`
@@ -177,7 +212,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         <p>${allowedSports.map(sport => `${SPORT[sport]} ${baseSkill(entry, sport)}`).join(' · ')}</p>
         <button data-recruit="${entry.id}">Sign ${entry.name}</button></div>`).join('')}</div></section>` : ''
     const headline = fixture
-      ? `${fixture.stage === 'final' ? 'Club final' : `Week ${fixture.week}`} · ${SPORT[fixture.sport]} vs ${fixture.rival}`
+      ? `${fixture.stage === 'regular' ? `Week ${fixture.week}` : competition(fixture)} · ${SPORT[fixture.sport]} vs ${fixture.rival}`
       : 'Season complete'
     const opponent = fixture && {
       soccer: SHAPE_NAMES[fixture.soccer], basketball: DEFENSE_NAMES[fixture.basketball],
@@ -186,7 +221,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     const scoutedSignature = club.pending
       ? club.pending.start?.match.athletes.find(player => player.team === 1 && player.signature)?.signature
       : fixture && rivalSignature(fixture)?.signature
-    const startingStamina = fixture && !club.pending ? club.lineups[fixture.sport]
+    const startingStamina = fixture && rotation && !club.pending ? rotation.starters
       .filter((_, slot) => fixture.sport !== 'hockey' || slot < 5 || slot === keeperSlot('hockey'))
       .map(id => ratings(clubAthlete(club, id), fixture.sport).stamina) : []
     const averageStamina = startingStamina.length
@@ -214,10 +249,38 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         <td>${HOCKEY_STYLES[rival.hockey]}</td><td>${FOOTBALL_STYLES[rival.football]}</td>
         <td>${row.wins}–${row.draws}–${row.losses}</td></tr>`
     }).join('')
-    const past = club.history.map(({ mode, results }, index) => {
-      const record = results.map(([a, b]) => a > b ? 'W' : a === b ? 'D' : 'L').join('–')
-      return `<li>Season ${index + 1} · ${mode === 'all' ? 'All four sports' : mode === 'both' ? 'Basketball &amp; soccer' : SPORT[mode]} · ${record} · ${completed[index]}</li>`
+    const past = club.history.map((record, index) => {
+      const { mode, results } = record
+      const letters = results.map(([a, b]) => a > b ? 'W' : a === b ? 'D' : 'L').join('–')
+      const trophies = cupTrophies(record).map(sport => SPORT[sport] + ' Cup')
+      return `<li>Season ${index + 1} · ${mode === 'all' ? 'All four sports' : mode === 'both' ? 'Basketball &amp; soccer' : SPORT[mode]} · ${letters} · ${completed[index]}${trophies.length ? ' · ' + trophies.join(', ') : ''}</li>`
     }).join('')
+    const protectedFixture = priority && games[priority.fixture]
+    const protectedStamina = priority && Math.min(100, 100 - clubAthlete(club, priority.athlete).fatigue
+      + (priority.fixture - club.results.length) * (RESTED_FIXTURE_RECOVERY + (club.calendar === 'cups' ? SAME_WEEK_RECOVERY : 0)))
+    const priorityForm = fixture && (priority || later.length) ? `<div class="fixture-priority">
+      ${priority && protectedFixture ? `<p><b>${profile(priority.athlete).name}</b> is protected for ${matchup(protectedFixture)} · Projected starting stamina ${protectedStamina}.</p>` : ''}
+      ${rotation && rotation.rotation ? `<p>${profile(rotation.rotation.in).name} replaces ${profile(rotation.rotation.out).name} in the next lineup.</p>` : ''}
+      ${editable && later.length ? `<form data-priority>
+        <p class="muted">Protect one athlete for a later fixture this week. An eligible reserve covers earlier appearances.</p>
+        <label class="lineup-choice">Athlete <select name="athlete">${club.roster.map(entry =>
+          `<option value="${entry.id}" ${entry.id === (priority?.athlete ?? athlete) ? 'selected' : ''}>${profile(entry.id).name}</option>`).join('')}</select></label>
+        <label class="lineup-choice">Save for <select name="fixture">${later.map(({ game, index }) =>
+          `<option value="${index}" ${priority?.fixture === index ? 'selected' : ''}>${matchup(game)}</option>`).join('')}</select></label>
+        <button type="submit">Set fixture priority</button><p class="priority-error" role="status"></p>
+      </form>` : ''}
+      ${priority && editable ? '<button type="button" data-action="clear-priority">Clear priority</button>' : ''}
+    </div>` : ''
+    const branch = player.branches[player.specialty]
+    const masteryBranch = branch ? `<p class="mastery-branch" tabindex="-1"><b>${TECHNIQUES[branch].label}</b> is available in every sport.</p>`
+      : player.mastery[player.specialty] === MAX_MASTERY ? `<div class="mastery-branch">
+        <h4>Choose a ${player.specialty} branch</h4>
+        <p class="muted">One permanent choice for this specialty. It unlocks the passive in every sport. Equip one passive per sport.</p>
+        <div class="branch-options">${MASTERY_BRANCHES[player.specialty].map(key => `<div>
+          <b>${TECHNIQUES[key].label}</b><p>${TECHNIQUES[key].detail}</p>
+          <button type="button" data-branch="${key}" ${editable ? '' : 'disabled'}>Choose ${TECHNIQUES[key].label}</button>
+        </div>`).join('')}</div>
+      </div>` : ''
     const focusChoices = fixture ? (Object.keys(MATCH_FOCUSES) as FocusId[]).filter(id => isFocusForSport(id, fixture.sport)) : []
     const selectedFocus = chosenFocus === '' || (chosenFocus && focusChoices.includes(chosenFocus)) ? chosenFocus : focusChoices[0]
     const focusInfo = selectedFocus ? MATCH_FOCUSES[selectedFocus] : undefined
@@ -234,7 +297,10 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
     container.innerHTML = `<section class="club-hero"><h2>Comets club</h2>
       <p><b>Season ${club.season} · ${headline}</b>${opponent ? ` · ${opponent}` : ''}</p>
       ${outcome && outcome !== 'Finished' ? `<p class="league-outcome"><b>${outcome}</b>${rank ? ` · League rank ${rank}` : ''}</p>` : ''}
-      <p class="season-record">${wins} wins · ${draws} draws · ${losses} losses · ${wins * 3 + draws} league points${titles ? ` · ${titles} ${titles === 1 ? 'title' : 'titles'}` : ''}</p>
+      <p class="season-record">${wins} wins · ${draws} draws · ${losses} losses · ${wins * 3 + draws} league points${titles ? ` · ${titles} league ${titles === 1 ? 'title' : 'titles'}` : ''}${cupTitles ? ` · ${cupTitles} ${cupTitles === 1 ? 'cup' : 'cups'}` : ''}</p>
+      ${thisSeasonCups.length ? `<p class="cup-titles">This season · ${thisSeasonCups.map(sport => SPORT[sport] + ' Cup').join(' · ')}</p>` : ''}
+      ${fixture?.stage === 'cup' ? '<p class="muted">Win to lift the cup. A draw leaves it with the rival. League standings are separate.</p>' : ''}
+      ${fixture ? `<p class="camp-balance">Week ${fixture.week} camp · ${campLeft} of ${CAMP_SESSIONS} sessions left</p>` : ''}
       ${startingStamina.length ? `<p class="muted club-readiness">Next lineup · Avg stamina ${averageStamina} · ${tired} of ${startingStamina.length} below 65</p>` : ''}
       ${scoutedSignature ? `<p class="muted"><b>Rival signature · ${SIGNATURES[scoutedSignature].label}</b>
         <br>${SIGNATURES[scoutedSignature].detail}</p>` : ''}
@@ -242,11 +308,15 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       <div class="club-actions">${fixture ? `<button class="primary" data-action="play">${club.pending ? 'Resume fixture' : 'Play fixture'}</button>`
         : '<button data-action="new">Start another season</button>'}</div>
     </section>
-    <p class="club-status" role="status">${message}</p>
+    <p class="club-status" role="status"></p>
     <div class="club-grid">
-      <section class="club-panel"><h3>Schedule</h3><div class="schedule-scroll">
-        <table class="schedule fixture-schedule"><thead><tr><th scope="col">Week</th><th scope="col">Sport</th><th scope="col">Rival</th><th scope="col">Result</th></tr></thead><tbody>${scheduleRows}</tbody></table>
-      </div></section>
+      <section class="club-panel"><h3>Season calendar</h3>
+        ${weekGames ? `<ol class="week-itinerary" aria-label="This week’s fixtures">${weekGames}</ol>` : ''}
+        ${priorityForm}
+        ${club.calendar === 'cups' ? `<p class="muted league-rule">Recover ${SAME_WEEK_RECOVERY} fatigue between fixtures and ${BETWEEN_WEEK_RECOVERY} between weeks. Athletes who sit out recover another ${RESTED_FIXTURE_RECOVERY}.</p>` : ''}
+        <details class="full-calendar" ${!fixture ? 'open' : ''}><summary>Full season schedule</summary><div class="schedule-scroll">
+        <table class="schedule fixture-schedule"><thead><tr><th scope="col">When</th><th scope="col">Sport</th><th scope="col">Rival</th><th scope="col">Result</th></tr></thead><tbody>${scheduleRows}</tbody></table>
+        </div></details></section>
       ${leaguePanel}
       <section class="club-panel"><h3>Starting lineup</h3><div class="club-actions">
         ${allowedSports.map(sport => `<button data-lineup="${sport}" aria-pressed="${lineupSport === sport}">${SPORT[sport]}</button>`).join('')}
@@ -270,12 +340,18 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
           <small>${player.mastery[role]}/${MAX_MASTERY}${role === player.specialty ? ' · Active' : ''}</small>
         </li>`).join('')}</ul>
         <p class="muted">Earn mastery in your active specialty through fixtures and general sport training. At ${SIGNATURE_MASTERY}, spend a session to learn a signature for a sport. At ${MAX_MASTERY}, keep using that specialty’s passive after switching roles, with 6 XP in the sport.</p>
+        ${masteryBranch}
+        ${fixture ? `<div class="camp">
+          <h4 id="camp-heading" tabindex="-1">Weekly training camp</h4>
+          <p>${campLeft} of ${CAMP_SESSIONS} sessions left · Shared by the club</p>
+          ${campLabels.length ? `<ul>${campLabels.map(label => `<li>${label}</li>`).join('')}</ul>` : ''}
+          ${editable ? `<p class="muted">Practice adds 3 sport XP and 1 active mastery up to its cap. Skill drills and signature lessons below also cost a session.</p>
+          <div class="club-actions">${allowedSports.map(sport => `<button data-train="${sport}" ${campTraining(sport) ? '' : 'disabled'}>Train ${SPORT[sport]}</button>`).join('')}
+          <button data-train="film" ${campTraining('film') && player.film < MAX_FILM_BONUS ? '' : 'disabled'}>Study film (+1 awareness)</button>
+          <button data-train="recovery" ${campTraining('recovery') && player.fatigue > 0 ? '' : 'disabled'}>Recover (−${Math.min(RECOVERY_SESSION, player.fatigue)} fatigue)</button>
+          ${TRAITS.map(trait => `<button data-train="${trait}" ${campTraining(trait) && player.athletics[trait] < MAX_TRAIT ? '' : 'disabled'}>Train ${ATHLETIC_TRAITS[trait].name}</button>`).join('')}</div>` : ''}
+        </div>` : ''}
         <ul class="sport-stats">${stats}</ul>
-        ${editable ? `<p class="muted">${canTrain ? 'One training session available this week.' : 'Training used this week.'}</p>
-        <div class="club-actions">${allowedSports.map(sport => `<button data-train="${sport}" ${canTrain ? '' : 'disabled'}>Train ${SPORT[sport]}</button>`).join('')}
-        <button data-train="film" ${canTrain && player.film < MAX_FILM_BONUS ? '' : 'disabled'}>Study film (+1 awareness)</button>
-        <button data-train="recovery" ${canTrain && player.fatigue > 0 ? '' : 'disabled'}>Recover (−28 fatigue)</button>
-        ${TRAITS.map(trait => `<button data-train="${trait}" ${canTrain && player.athletics[trait] < MAX_TRAIT ? '' : 'disabled'}>Train ${ATHLETIC_TRAITS[trait].name}</button>`).join('')}</div>` : ''}
       </section>
     </div>${sign}<details class="club-panel rival-records"><summary>Rival records</summary>
       <div class="schedule-scroll"><table class="schedule"><thead><tr><th scope="col">Club</th>
@@ -283,6 +359,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
         <th scope="col">Hockey defense</th><th scope="col">Football defense</th><th scope="col">W–D–L</th>
       </tr></thead><tbody>${rivalRows}</tbody></table></div></details>${past ? `<details class="club-panel past-seasons"><summary>Past seasons</summary><ol>${past}</ol></details>` : ''}
     ${saveControls(true)}`
+    container.querySelector('.club-status')!.textContent = message
   }
 
   function saveControls(hasSave: boolean) {
@@ -294,7 +371,7 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
 
   container.addEventListener('click', event => {
     const button = (event.target as Element).closest<HTMLButtonElement>('button')
-    if (!button) return
+    if (!button || button.type === 'submit' && button.form?.matches('[data-priority]')) return
     const data = button.dataset
     if (data.action === 'play') {
       const focus = container.querySelector<HTMLSelectElement>('#fixture-focus')?.value
@@ -333,6 +410,13 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       controller.trainTechnical(athlete, sport, skill)
       lastDrillSport = sport
       message = `${profile(athlete).name} gained 1 ${DRILLS[sport][skill].toLowerCase()} and 1 ${SPORT[sport]} XP.`
+    } else if (data.action === 'clear-priority') {
+      controller.prioritize(athlete, null)
+      message = 'Fixture priority cleared.'
+    } else if (data.branch) {
+      const key = data.branch as Technique
+      controller.chooseBranch(athlete, key)
+      message = `${profile(athlete).name} can equip ${TECHNIQUES[key].label} in every sport.`
     } else if (data.train) {
       const focus = data.train as TrainingFocus
       controller.train(athlete, focus)
@@ -343,6 +427,8 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
             : `${name} earned 3 ${SPORT[focus]} XP.`
     }
     render()
+    if (data.branch) container.querySelector<HTMLElement>('.mastery-branch')?.focus()
+    if (data.train) container.querySelector<HTMLElement>('#camp-heading')?.focus()
     if (data.drill) container.querySelector<HTMLElement>(`[data-drills="${data.sport}"]`)?.focus()
     if (data.learnSignature) container.querySelector<HTMLSelectElement>(`[data-signature="${data.sport}"]`)?.focus()
     if (data.season) container.querySelector<HTMLButtonElement>('[data-action="play"]')?.focus()
@@ -350,8 +436,24 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       (data.athlete ? `[data-athlete="${athlete}"]` : `[data-lineup="${lineupSport}"]`))?.focus()
   }, { signal })
 
+  container.addEventListener('submit', event => {
+    if (!(event.target instanceof HTMLFormElement) || !event.target.matches('[data-priority]')) return
+    event.preventDefault()
+    const data = new FormData(event.target)
+    try {
+      controller.prioritize(String(data.get('athlete')), Number(data.get('fixture')))
+      message = 'Fixture priority saved.'
+    } catch (error) {
+      event.target.querySelector('.priority-error')!.textContent = error instanceof Error ? error.message : 'Choose an athlete and fixture.'
+      return
+    }
+    render()
+    container.querySelector<HTMLButtonElement>('[data-priority] button')?.focus()
+  }, { signal })
+
   container.addEventListener('change', async event => {
     const input = event.target as HTMLInputElement | HTMLSelectElement
+    if (input.closest('[data-priority]')) return
     message = ''
     try {
       if (input instanceof HTMLInputElement && input.files?.[0]) {
@@ -373,8 +475,9 @@ export function mountClub(container: HTMLElement, controller: ClubView, signal: 
       } else if (input.dataset.specialty !== undefined) {
         controller.specialize(athlete, input.value as Specialty)
       }
-    } catch {
-      message = 'That change could not be applied. Check the save file or lineup.'
+    } catch (error) {
+      message = input.id !== 'club-import' && error instanceof Error ? error.message
+        : 'That change could not be applied. Check the save file or lineup.'
     }
     render()
     if (input.id === 'fixture-focus') container.querySelector<HTMLElement>('#fixture-focus')?.focus()
