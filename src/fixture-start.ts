@@ -12,6 +12,7 @@ import type { Fixture } from './league.ts'
 
 export const FIXTURE_START_V1 = 1
 export const OPPONENT_POLICY_V1 = 1
+export const OPPONENT_POLICY_V2 = 2
 
 type SportStart =
   | { sport: 'basketball'; match: BasketballMatch; defense: DefenseStyle }
@@ -21,7 +22,7 @@ type SportStart =
 
 export type FixtureStart = SportStart & {
   version: typeof FIXTURE_START_V1
-  opponentPolicy: typeof OPPONENT_POLICY_V1
+  opponentPolicy: typeof OPPONENT_POLICY_V1 | typeof OPPONENT_POLICY_V2
   starters: string[]
 }
 
@@ -79,10 +80,12 @@ function clubLineup(value: unknown, hockey: boolean): boolean {
 }
 
 export function validFixtureStart(value: unknown, fixture: Fixture, rules: number, roster: readonly string[]): value is FixtureStart {
-  if (!record(value) || value.version !== FIXTURE_START_V1 || value.opponentPolicy !== OPPONENT_POLICY_V1
+  if (!record(value) || value.version !== FIXTURE_START_V1
     || value.sport !== fixture.sport || !record(value.match) || !Array.isArray(value.starters)) return false
   const { match } = value
   const sport = fixture.sport
+  if (value.opponentPolicy !== OPPONENT_POLICY_V1
+    && !(value.opponentPolicy === OPPONENT_POLICY_V2 && (sport === 'basketball' || sport === 'soccer'))) return false
   const size = sport === 'basketball' ? 5 : sport === 'hockey' ? 6 : 11
   const rosterSize = sport === 'hockey' ? 11 : size
   if (value.starters.length !== rosterSize || new Set(value.starters).size !== rosterSize

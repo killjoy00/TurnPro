@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
-import { createClub } from '../src/club.ts'
+import { createClub, settleFixture } from '../src/club.ts'
 import { beginClubFixture, openClubFixture } from '../src/club-fixture.ts'
 
 const browser = await chromium.launch()
@@ -45,6 +45,18 @@ try {
   assert.equal(persisted.turns.length, 2)
   assert.deepEqual(persisted.start, upgraded.start)
   assert.deepEqual(persisted.opponentPlans[0], originalReply)
+
+  const first = beginClubFixture(createClub('basketball'))
+  const second = settleFixture(first, [0, 0], openClubFixture(first).match.athletes)
+  await page.evaluate(raw => localStorage.setItem('turn-pro-club-v1', raw), JSON.stringify(second))
+  await page.reload()
+  await page.getByRole('button', { name: 'Club season' }).click()
+  assert.match(await page.locator('.club-hero').innerText(), /Rival signature · Cut and finish/)
+  await page.getByRole('button', { name: 'Play fixture', exact: true }).click()
+  await page.getByRole('button', { name: 'Commit turn' }).click()
+  const scouted = await page.evaluate(() => JSON.parse(localStorage.getItem('turn-pro-club-v1')).pending.start)
+  assert.equal(scouted.opponentPolicy, 2)
+  assert.equal(scouted.match.athletes.find(athlete => athlete.team === 1 && athlete.signature)?.signature, 'cut-and-finish')
 
   await page.evaluate(raw => localStorage.setItem('turn-pro-club-v1', raw), JSON.stringify(createClub('football')))
   await page.reload()

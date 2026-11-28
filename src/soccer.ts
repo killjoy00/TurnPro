@@ -13,7 +13,7 @@ export const TURN_LIMIT = HALF_TURNS * 2
 export const PREVIOUS_RULES_VERSION = 2
 export const RULES_VERSION = 3
 const MIDFIELD = { x: PITCH.width / 2, y: PITCH.length / 2 }
-const SHOT_RANGE = 32
+export const SHOT_RANGE = 32
 
 const FORMATION = [
   ['GK', 6, 34], ['LB', 25, 10], ['CB', 22, 25], ['CB', 22, 43], ['RB', 25, 58],
@@ -25,7 +25,7 @@ const NAMES = [
 ] as const
 const LANES = ['left channel', 'middle', 'right channel'] as const
 
-interface Footballer extends AthleteSnapshot {
+export interface Footballer extends AthleteSnapshot {
   slot: number
   pace: number
   passing: number

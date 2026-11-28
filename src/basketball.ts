@@ -284,6 +284,20 @@ function assignment(match: Match, athlete: Athlete, command: Command | undefined
   return athlete.home
 }
 
+export function projectAssignment(match: Match, player: Athlete, command?: Command): Point {
+  const projected = { ...player }
+  const target = assignment(match, player, command)
+  moveAthlete(projected, target, reach(player, Boolean(command)) * (command ? 1 : 0.65), match.athletes)
+  return projected.position
+}
+
+export function passCompletion(passer: Athlete, range: number, lane: readonly Athlete[]): number {
+  return clamp(100 - range * 0.65 + (passer.passing - 6) * 3
+    - lane.reduce((cost, defender) => cost + 17 + (defender.defense ?? 0) + (defender.technique === 'read-play' ? 4 : 0), 0)
+    + ((passer.awareness ?? 6) - 6) * 1.5
+    + (lane.length > 0 && passer.technique === 'thread-pass' ? 12 : 0) - fatiguePenalty(passer, 60, 0.3), 15, 98)
+}
+
 export function rollTarget(player: Athlete): Point {
   return { x: COURT.hoop.x + (player.position.x < COURT.hoop.x ? -3.5 : 3.5), y: 9 }
 }
@@ -296,12 +310,9 @@ export function baseAssignment(match: Match, id: string) {
   const player = athleteById(match, id)
   const holder = athleteById(match, match.holder)
   if (player.id === holder.id) return { label: 'Hold the ball' }
-  const destination = assignment(match, player, undefined)
-  const projected = { ...player }
-  moveAthlete(projected, destination, reach(player) * 0.65, match.athletes)
   return {
     label: player.team === holder.team ? 'Keep floor spacing' : `Mark ${matchedAthlete(match, player).name}`,
-    target: projected.position,
+    target: projectAssignment(match, player),
   }
 }
 
@@ -426,10 +437,7 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     const lane = next.athletes.filter(athlete => athlete.team === defense && !screened.has(athlete.id)
       && distanceToSegment(athlete.position, passer.position, receiver.position) <= 3)
     const range = distance(passer.position, receiver.position)
-    const chance = clamp(100 - range * 0.65 + (passer.passing - 6) * 3
-      - lane.reduce((cost, defender) => cost + 17 + (defender.defense ?? 0) + (defender.technique === 'read-play' ? 4 : 0), 0)
-      + ((passer.awareness ?? 6) - 6) * 1.5
-      + (lane.length > 0 && passer.technique === 'thread-pass' ? 12 : 0) - fatiguePenalty(passer, 60, 0.3), 15, 98)
+    const chance = passCompletion(passer, range, lane)
     const passDetail = `${Math.round(chance)}% completion, ${lane.length} ${lane.length === 1 ? 'defender' : 'defenders'} in the lane`
     if (random.next() * 100 < chance) {
       next.holder = receiver.id

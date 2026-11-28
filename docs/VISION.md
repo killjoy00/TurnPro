@@ -165,7 +165,7 @@ All four sports share command validation, plan reveal, event formatting, browser
 
 Keep an original 2D sporting presentation with clear athlete labels, control focus, visible possession, outcome feedback, and readable small-screen layouts. Mouse, keyboard, and touch are appropriate for early browser playtests. Gamepad navigation, remapping, and Steam Deck verification are commercial readiness gates. Offline single-player and versioned local saves should precede desktop packaging. Choose packaging after browser playtests and Steam Deck checks justify it.
 
-Use CI to compile, run tests, and produce a downloadable browser build. Start with legal-action, resolution, scoring, possession, fatigue, and reproducibility coverage. Expand scenario tests, AI simulations, responsive and input checks, and versioned replay fixtures as those features mature.
+Use the [Vale build and counterplay audit](VALE-BUILDS.md) to compare the first two athlete builds under matched seeds. Use CI to compile, run tests, and produce a downloadable browser build. Start with legal-action, resolution, scoring, possession, fatigue, and reproducibility coverage. Expand scenario tests, AI simulations, responsive and input checks, and versioned replay fixtures as those features mature.
 
 ## Roadmap and release gates
 
