@@ -354,3 +354,166 @@ html[data-contrast="high"] .court { outline: 1px solid #91b5c7; }
 .fixture-focus p { grid-column: 1 / -1; color: var(--muted); margin: 0; font-size: .82rem; }
 .match-focus { margin: .55rem .8rem; padding-block: .35rem; border-block-end: 1px solid var(--line); font-size: .8rem; }
 .match-focus.focus-earned { color: var(--lime); }
+
+/* Arena finish and broadcast graphics */
+:root {
+  background: #0b151b;
+  --panel: #18262e;
+  --line: #344850;
+  --lime: #dcfa8a;
+  --sport-glow: #ffc373;
+  --sport-glow-faint: #ffc37336;
+}
+body.soccer { --sport-glow: #baf589; --sport-glow-faint: #baf5893c; }
+body.hockey { --sport-glow: #a9e8ff; --sport-glow-faint: #a9e8ff37; }
+body.football { --sport-glow: #fdda8e; --sport-glow-faint: #fdda8e3b; }
+body {
+  background-image: radial-gradient(ellipse at 35% 0%, #23343d 0%, transparent 52%),
+    repeating-linear-gradient(134deg, transparent 0 11px, #e8f9f603 11px 12px);
+  min-height: 100vh;
+}
+.topbar { background: #0d171edb; }
+h1 { letter-spacing: -.085em; }
+h1 em { color: var(--sport-glow); }
+.scoreboard {
+  position: relative;
+  border-color: #50616a;
+  border-top-color: var(--sport-glow);
+  border-radius: 7px;
+  background: linear-gradient(120deg, #99ffda1a, transparent 37%, transparent 62%, #ffb1841a),
+    linear-gradient(180deg, #243740, #0c171e);
+  box-shadow: 0 8px 28px #070e17a8, inset 0 1px 0 #ffffff22;
+}
+.team-score { padding-block: .25rem; }
+.points { font-style: italic; font-weight: 950; letter-spacing: -.045em; }
+.scoreboard[data-scored="home"] .home .points,
+.scoreboard[data-scored="away"] .away .points { animation: score-rise .28s ease-out both; }
+.scoreboard[data-scored="home"] .home .points { color: #e8ffb0; text-shadow: 0 0 19px #c1fc7fb0; }
+.scoreboard[data-scored="away"] .away .points { color: #ffccb2; text-shadow: 0 0 19px #ff94729c; }
+.turn-clock { padding-inline: clamp(1px, 1.5vw, 15px); border-inline: 1px solid #c5ebe024; }
+.turn-clock strong { color: var(--sport-glow); }
+
+.court-section, .plan, .history {
+  border-radius: 7px;
+  box-shadow: 0 8px 25px #09101585;
+}
+.court {
+  isolation: isolate;
+  overflow: hidden;
+}
+.court::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 24px 3px #061a1b83, inset 0 0 0 1px #fff5d55e;
+  z-index: 1;
+}
+.court[data-impact="score"]::after, .court[data-impact="away"]::after {
+  box-shadow: inset 0 0 34px 7px var(--sport-glow), inset 0 0 0 3px #fff9cc;
+}
+.court[data-impact="away"]::after { box-shadow: inset 0 0 30px 4px #ff8a70; }
+
+.marker {
+  background: linear-gradient(160deg, #2a8c79 0%, #113d3e 75%);
+  border: 1.5px solid #d4fff3;
+  border-radius: 8px 8px 12px 12px;
+  text-shadow: 0 1px 2px #061216;
+  box-shadow: inset 0 -3px 0 #04151f94, 0 3px 5px #0a212da0;
+}
+.marker.away {
+  border-color: #ffdec1;
+  border-radius: 50%;
+  background: linear-gradient(160deg, #a64e3a 0%, #592539 85%);
+}
+.marker[aria-pressed="true"] { outline-color: #10242c; box-shadow: 0 0 0 3px #f7ffffff, 0 5px 9px #071b26; }
+.marker.queued, .markers.playing .revealed {
+  border-color: #fff19f;
+  box-shadow: 0 0 0 2px #17252f, 0 0 9px 4px #ffed84bf;
+}
+.marker .ball, .resolved-ball {
+  background: radial-gradient(circle at 35% 28%, #fff0c4 7%, #ffb458 40%, #b84a21 77%);
+  box-shadow: 0 1px 4px #141414b0;
+}
+.soccer .marker .ball, .soccer .resolved-ball {
+  background: repeating-conic-gradient(from 24deg, #f5fff3 0deg 38deg, #354655 40deg 60deg);
+}
+.hockey .marker .ball, .hockey .resolved-ball {
+  height: 8px;
+  background: linear-gradient(#34465a, #0a1321);
+  border-color: #cae7fc;
+}
+.football .marker .ball, .football .resolved-ball {
+  background: linear-gradient(130deg, #ac6737 30%, #fff0bd 40% 49%, #763414 55%);
+  border-radius: 45% 50%;
+}
+.ball-trail {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  height: 3px;
+  border-radius: 99px;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #fff2bd14, #fff4c9f0, white);
+  box-shadow: 0 0 7px var(--sport-glow);
+}
+.match-impact {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 7;
+  pointer-events: none;
+  padding: .75rem;
+}
+.court:is([data-impact="score"], [data-impact="away"]) .match-impact::before {
+  content: "";
+  position: absolute;
+  width: min(76%, 30rem);
+  aspect-ratio: 2;
+  background: repeating-conic-gradient(from 8deg, transparent 0deg 14deg, var(--sport-glow-faint) 15deg 18deg, transparent 19deg 28deg);
+  mask-image: radial-gradient(ellipse, transparent 18%, black 31%, transparent 73%);
+  animation: score-rise .4s ease-out both;
+}
+.match-impact strong {
+  position: relative;
+  border: 2px solid var(--sport-glow);
+  padding: .46em .8em .53em;
+  border-radius: 5px;
+  background: #0d171ff2;
+  color: var(--sport-glow);
+  font-size: clamp(1.1rem, 4.8vw, 2.8rem);
+  font-weight: 950;
+  font-style: italic;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: -.022em;
+  text-align: center;
+  box-shadow: 0 3px 28px var(--sport-glow-faint);
+  animation: impact-in .26s cubic-bezier(.2,.7,.2,1.12) both;
+}
+.court[data-impact="away"] .match-impact strong { color: #ffd0b2; border-color: #ff9c83; }
+.court:is([data-impact="save"], [data-impact="turnover"]) .match-impact strong {
+  font-size: clamp(1rem, 3vw, 1.52rem);
+  align-self: end;
+}
+.commit:not(:disabled) {
+  background: linear-gradient(135deg, #ebffa9, var(--lime));
+  box-shadow: inset 0 -3px 0 #355c2c60;
+}
+.commit:not(:disabled):hover { background: #f1ffc9; }
+@keyframes impact-in {
+  from { opacity: 0; transform: scale(.82) translateY(9px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes score-rise {
+  0% { transform: scale(.92); }
+  57% { transform: scale(1.11); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .match-impact strong, .court .match-impact::before,
+  .scoreboard[data-scored] .team-score .points { animation: none; }
+}
+html[data-contrast="high"] .scoreboard { background: #101c21; }
+html[data-contrast="high"] .marker { border-width: 2px; }

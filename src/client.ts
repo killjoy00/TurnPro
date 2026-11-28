@@ -17,6 +17,7 @@ import { mountClub } from './club-view.ts'
 import { teamNames, type MatchSnapshot, type PlanCommand, type TurnEvent } from './match.ts'
 import { installGamepad } from './gamepad.ts'
 import { installDisplaySettings } from './display-settings.ts'
+import { installMatchSound } from './match-sound.ts'
 import { installPlaytest } from './playtest.ts'
 
 const basketballView: SportView<basketball.Match, basketball.Command> = {
@@ -497,4 +498,5 @@ learn.addEventListener('click', event => {
 })
 
 installDisplaySettings()
+installMatchSound()
 installGamepad()

@@ -9,6 +9,7 @@ import { TECHNIQUES } from './club.ts'
 import type { LoggedTurn } from './club-fixture.ts'
 import { trackMatch } from './playtest.ts'
 import { playResolution } from './match-playback.ts'
+import { playMatchSound, unlockMatchSound } from './match-sound.ts'
 import type { Formation } from './football.ts'
 
 export interface SportView<S extends MatchSnapshot, C extends PlanCommand> {
@@ -49,6 +50,8 @@ function element<T extends HTMLElement = HTMLElement>(id: string): T {
 const scoreboard = element('scoreboard')
 const possession = element('possession')
 const markers = element('markers')
+const impactLayer = element('match-impact')
+const arena = impactLayer.parentElement!
 const lineup = element('lineup')
 const lineupDetail = element('lineup-detail')
 const budget = element('budget')
@@ -117,6 +120,36 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   const isPortrait = () => sport.id !== 'basketball' && portrait.matches
   const motion = matchMedia('(prefers-reduced-motion: reduce)')
   let playback: AbortController | undefined
+  let impactTimer: number | undefined
+  function clearImpact() {
+    window.clearTimeout(impactTimer)
+    impactLayer.replaceChildren()
+    delete arena.dataset.impact
+    delete scoreboard.dataset.scored
+  }
+
+  function showImpact(event: TurnEvent, before: S, after: S, audioSignal: AbortSignal) {
+    const { kind } = event
+    if (kind !== 'score' && kind !== 'save' && kind !== 'turnover') return false
+    clearImpact()
+    const badge = document.createElement('strong')
+    const isHome = after.score[0] !== before.score[0]
+    const points = isHome ? after.score[0] - before.score[0] : after.score[1] - before.score[1]
+    const labels = { basketball: points === 3 ? 'Three-pointer' : 'Bucket',
+      soccer: 'Goal', hockey: 'Goal', football: points === 7 ? 'Touchdown' : points === 3 ? 'Field goal' : 'Safety' }
+    badge.textContent = kind === 'score' ? `+${points} · ${labels[sport.id]}`
+      : kind === 'save' ? 'Big save' : event.cue?.type === 'ball' && event.cue.action === 'interception'
+        ? 'Intercepted' : 'Turnover'
+    impactLayer.append(badge)
+    arena.dataset.impact = kind === 'score' && !isHome ? 'away' : kind
+    if (kind === 'score') {
+      renderScore(after.score)
+      scoreboard.dataset.scored = isHome ? 'home' : 'away'
+    }
+    playMatchSound(kind === 'score' ? 'score' : 'stop', sport.id, audioSignal, isHome)
+    impactTimer = window.setTimeout(clearImpact, 950)
+    return true
+  }
   const planningControls = [markers, lineup, budgetPreset, practice, checklist, formationPanel, orders, assignmentToggle, actions]
   function endPlayback() {
     playback?.abort()
@@ -125,7 +158,10 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     commit.hidden = false
     for (const control of planningControls) control.inert = false
   }
-  signal.addEventListener('abort', endPlayback, { once: true })
+  signal.addEventListener('abort', () => {
+    endPlayback()
+    clearImpact()
+  }, { once: true })
   skipPlayback.addEventListener('click', () => playback?.abort(), { signal })
   motion.addEventListener('change', () => {
     if (motion.matches) playback?.abort()
@@ -194,6 +230,16 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
       context.moveTo(from.x, from.y)
       context.lineTo(to.x, to.y)
       context.stroke()
+      const bearing = Math.atan2(to.y - from.y, to.x - from.x)
+      const size = sport.id === 'basketball' ? 1 : 1.8
+      context.save()
+      context.setLineDash([])
+      context.beginPath()
+      context.moveTo(to.x - Math.cos(bearing - .48) * size, to.y - Math.sin(bearing - .48) * size)
+      context.lineTo(to.x, to.y)
+      context.lineTo(to.x - Math.cos(bearing + .48) * size, to.y - Math.sin(bearing + .48) * size)
+      context.stroke()
+      context.restore()
     }
     context.setLineDash([])
   }
@@ -355,6 +401,8 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
     if (!button) return
     const command = availableCommands()[Number(button.dataset.command)]
     if (!command) return
+    unlockMatchSound()
+    playMatchSound('order', sport.id, signal)
     const followedGuide = guidedStep && matchesStep(command, guidedStep)
     guidedStep = undefined
     plan = [...plan.filter(previous => previous.athlete !== command.athlete), command]
@@ -423,7 +471,10 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
 
   commit.addEventListener('click', async () => {
     if (playback || match.turn > sport.turnLimit || commit.disabled) return
+    clearImpact()
+    unlockMatchSound()
     const turn = match.turn
+    const starting = match
     const practicing = steps.length > 0
     const opponent = (season?.opponent ?? sport.opponent)(match, 1)
     const resolution = sport.resolveTurn(match, [plan, opponent])
@@ -439,14 +490,31 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
       for (const control of planningControls) control.inert = true
       plan = []
       drawBoard()
-      await playResolution(markers, summary, resolution.events, match.athletes, match.holder, project,
-        () => renderScore(resolution.match.score), playing.signal)
+      try {
+        await playResolution(markers, summary, resolution.events, match.athletes, match.holder, project, {
+          impact: event => showImpact(event, starting, resolution.match, playing.signal),
+          sound: cue => playMatchSound(cue, sport.id, playing.signal),
+        }, playing.signal)
+      } catch (error) {
+        console.warn('Match playback ended early.', error)
+        playing.abort()
+      }
+      if (playback === playing && playing.signal.aborted) clearImpact()
       if (playback !== playing) return
       const restoreFocus = document.activeElement === skipPlayback
       endPlayback()
       if (restoreFocus) commit.focus({ preventScroll: true })
     }
     match = resolution.match
+    if (motion.matches) {
+      const outcome = resolution.events.find(event => event.kind === 'score')
+        ?? resolution.events.find(event => event.kind === 'save' || event.kind === 'turnover')
+      if (outcome) showImpact(outcome, starting, match, signal)
+      else playMatchSound('commit', sport.id, signal)
+    }
+    if (match.turn > sport.turnLimit && !resolution.events.some(event => event.kind === 'score')) {
+      playMatchSound('finish', sport.id, signal)
+    }
     track(turn, match.score, Boolean(steps.length) || match.turn > sport.turnLimit)
     if (practicing) {
       steps = []
@@ -466,6 +534,7 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
 
   function restart(next: S, message: string, practiceSteps: readonly PracticeStep[] = []) {
     endPlayback()
+    clearImpact()
     steps = practiceSteps
     coached = false
     guidedMatch = false
@@ -513,7 +582,10 @@ export function mountGame<S extends MatchSnapshot, C extends PlanCommand>(
   markers.setAttribute('aria-label', markerLabels[sport.id])
   budgetPreset.hidden = Boolean(season) || sport.id !== 'soccer'
   practice.hidden = Boolean(season) || !sport.practices?.length
-  portrait.addEventListener('change', render, { signal })
+  portrait.addEventListener('change', () => {
+    if (playback) playback.abort()
+    else render()
+  }, { signal })
 
   render()
 }

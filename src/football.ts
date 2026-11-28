@@ -3,7 +3,7 @@ import { contactBonus, fatiguePenalty, quickStep, recoveryBonus } from './athlet
 import { clamp, seededRandom, type Point } from './math.ts'
 import {
   COMMAND_LIMIT, finalScore, findAthlete, otherTeam, revealPlans, teamNames, validatePlans,
-  type Appearance, type AthleteBuild, type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type Team, type TurnEvent,
+  type Appearance, type AthleteBuild, type AthleteSnapshot, type EventKind, type MatchSnapshot, type Plans, type PlayCue, type Team, type TurnEvent,
 } from './match.ts'
 
 export const FIELD = { width: 120, height: 54, goal: 10 }
@@ -355,13 +355,15 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
   const random = seededRandom(match.randomState)
   const roll = () => random.next() * 100
   const events: TurnEvent[] = revealPlans(match, plans, commandLabel)
-  const emit = (kind: EventKind, text: string, achievement?: FocusAchievement) =>
-    events.push({ kind, text, ...(achievement ? { achievement } : {}) })
+  const emit = (kind: EventKind, text: string, achievement?: FocusAchievement, cue?: PlayCue) =>
+    events.push({ kind, text, ...(achievement ? { achievement } : {}), ...(cue ? { cue } : {}) })
   if (match.formation) emit('plan', `${names[attack]} line up in ${FORMATIONS[match.formation].name}.`)
   if (!plans[attack].some(order => order.athlete === match.holder)) {
     emit('plan', `${names[attack]} snap their base inside handoff.`)
   }
   const quarterback = findAthlete(match.athletes, match.holder)
+  const at = (yards: number, lane = 27) => orient(match, clamp(match.yard + yards, -5, 105), lane)
+  const forward = direction(match, attack)
   const orders = new Map(plans.flat().map(order => [order.athlete, order]))
   for (const player of match.athletes) {
     const order = orders.get(player.id)
@@ -415,20 +417,24 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
     const rush = plans[defending].filter(order => order.kind === 'rush-kick').length
     const net = 34 + Math.floor(roll() * 0.16) - rush * 5
     const touchback = match.yard + net >= 100
-    emit('ball', touchback ? 'Punt reaches the end zone for a touchback.' : `Punt nets ${net} yards.`)
+    emit('ball', touchback ? 'Punt reaches the end zone for a touchback.' : `Punt nets ${net} yards.`,
+      undefined, { type: 'ball', action: 'kick', from: quarterback.position, to: at(net) })
     giveBall(touchback ? 20 : 100 - match.yard - net)
   } else if (play.kind === 'field-goal') {
     const distance = 117 - match.yard
     if (roll() < estimate.chance) {
       next.score[attack] += 3
-      emit('score', `${names[attack]} make a ${distance}-yard field goal (${estimate.chance}% make chance).`)
+      emit('score', `${names[attack]} make a ${distance}-yard field goal (${estimate.chance}% make chance).`,
+        undefined, { type: 'ball', action: 'kick', from: quarterback.position, to: at(105 - match.yard) })
       giveBall(25)
     } else {
-      emit('turnover', `${names[attack]} miss a ${distance}-yard field goal (${estimate.chance}% make chance).`)
+      emit('turnover', `${names[attack]} miss a ${distance}-yard field goal (${estimate.chance}% make chance).`,
+        undefined, { type: 'ball', action: 'kick', from: quarterback.position, to: at(105 - match.yard, 16) })
       giveBall(Math.max(20, 107 - match.yard))
     }
   } else if ('target' in play) {
     const receiver = findAthlete(match.athletes, play.target)
+    const lane = forward === 1 ? receiver.position.y : FIELD.height - receiver.position.y
     const factors = match.rulesVersion !== PREVIOUS_RULES_VERSION && estimate.factors.length
       ? ` · ${estimate.factors.join(', ')}` : ''
     const completion = `${estimate.chance}% catch chance${factors}`
@@ -438,28 +444,34 @@ export function resolveTurn(match: Match, plans: Plans<Command>) {
       const pressure = match.rulesVersion !== PREVIOUS_RULES_VERSION ? ` (${estimate.sack}% sack chance${factors})` : ''
       const blitzer = plans[defending].find(order => order.kind === 'blitz')
       emit('ball', `${quarterback.name} is sacked for a loss of ${yards} yards${pressure}.`,
-        blitzer ? focusAchievement('blitz-sack', findAthlete(match.athletes, blitzer.athlete)) : undefined)
+        blitzer ? focusAchievement('blitz-sack', findAthlete(match.athletes, blitzer.athlete)) : undefined,
+        { type: 'ball', action: 'carry', from: quarterback.position, to: at(-yards), holder: quarterback.id })
       advance(-yards)
     } else if (roll() < estimate.chance) {
       const yards = Math.min(100 - match.yard, Math.max(1, estimate.yards + Math.floor(roll() * 0.07) - 3))
       const spot = match.yard + yards
       emit('ball', `${quarterback.name} finds ${receiver.name} for ${yards} yards (${completion}).`,
         play.kind === 'play-action' && (spot >= match.sticks || spot >= 100)
-          ? focusAchievement('fake-conversion', quarterback) : undefined)
+          ? focusAchievement('fake-conversion', quarterback) : undefined,
+        { type: 'ball', action: 'pass', from: quarterback.position, to: at(yards, lane), holder: receiver.id })
       advance(yards)
     } else if (roll() < estimate.pick) {
       const spot = Math.min(100, match.yard + estimate.yards)
-      emit('turnover', `${names[defending]} intercept the pass intended for ${receiver.name}.`)
+      emit('turnover', `${names[defending]} intercept the pass intended for ${receiver.name}.`,
+        undefined, { type: 'ball', action: 'interception', from: quarterback.position, to: at(spot - match.yard, lane) })
       giveBall(spot === 100 ? 20 : 100 - spot + Math.floor(roll() * 0.12))
     } else {
-      emit('ball', `${quarterback.name} throws incomplete to ${receiver.name} (${completion}).`)
+      emit('ball', `${quarterback.name} throws incomplete to ${receiver.name} (${completion}).`,
+        undefined, { type: 'ball', action: 'pass', from: quarterback.position, to: at(estimate.yards, lane) })
       advance(0)
     }
   } else {
     const runner = findAthlete(match.athletes, `${attack}-o-1`)
     const yards = estimate.yards + Math.floor(roll() * 0.07) - 3
     const gain = yards < 0 ? `loses ${-yards}` : `gains ${Math.min(100 - match.yard, yards)}`
-    emit('ball', `${runner.name} ${gain} yards on the ${play.kind === 'inside' ? 'inside handoff' : play.kind.replace('-', ' ')}.`)
+    const lane = play.kind === 'sweep-left' ? 16 : play.kind === 'sweep-right' ? 38 : 27
+    emit('ball', `${runner.name} ${gain} yards on the ${play.kind === 'inside' ? 'inside handoff' : play.kind.replace('-', ' ')}.`,
+      undefined, { type: 'ball', action: 'carry', from: quarterback.position, via: runner.position, to: at(yards, lane), holder: runner.id })
     advance(yards)
   }
   next.turn += 1
